@@ -139,8 +139,27 @@ token 全被思考吃光，正文返回空。
 "max_tokens": 8000,   # ← 改这里
 ```
 
-脚本遇到「有返回但没正文」时会打印 `[AI 无正文] blocks=[...] stop=...`，
-看到这个就是撞上了。
+脚本遇到「有返回但没正文」时会打印：
+
+```
+[AI 无正文] blocks=['thinking'] stop=max_tokens
+→ 思考块把输出额度用光了。调大 AI_MAX_TOKENS（比如 16000）再试。
+```
+
+**看到这行就把 `AI_MAX_TOKENS` 调到 16000。** 实测 8000 在长纪要上不够 ——
+有些模型先输出一大段思考，额度被吃光，正文一个字都没有。
+
+### 填了 DeepSeek 地址却一直 404
+
+DeepSeek 的 Anthropic 兼容端点挂在 `/anthropic` 下面：
+
+```bash
+export AI_BASE_URL="https://api.deepseek.com/anthropic"   # 对
+export AI_BASE_URL="https://api.deepseek.com"             # 会 404
+```
+
+脚本做了自动补全（看到 `api.deepseek.com` 结尾没有 `/anthropic` 就自己加上），
+所以两个写法都能用。但别的服务商不保证，填之前看一眼它们文档里的完整路径。
 
 ### 报错信息被当成纪要发出去了
 

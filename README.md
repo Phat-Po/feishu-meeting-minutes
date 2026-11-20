@@ -190,18 +190,21 @@ export SUMMARY_CMD="ollama run qwen3"   # 本地模型
 
 ## 多个账号
 
-设备可能会换账号，录音也可能存在不同的号里。脚本支持一次扫多个：
+**默认自动扫所有已登录的账号** —— 这台机器上 `lark-cli` 登了几个号，就查几个号，
+不用配任何东西。以后多登一个号，脚本自己会发现。
+
+想限定范围再设：
 
 ```bash
 export LARK_PROFILES="cli_xxxxxxxx,cli_yyyyyyyy"
 ```
 
+账号名用 `lark-cli profile list` 查。
+
 - 每个号各查各的会议和录音，互不影响
 - **文档建在录音所属的那个账号的云盘里**，不会串号
 - 卡片发给每个账号自己（除非你设了 `OPERATOR_OPEN_ID`）
 - 某个号登录过期，只跳过它，其他号照常跑
-
-账号名用 `lark-cli profile list` 查。
 
 ## 让它定时跑
 
@@ -295,6 +298,7 @@ docs/feishu-setup.md    飞书应用配置：建应用、开权限、发布、�
 docs/run-it.md          怎么跑：本机 / 服务器 / 定时任务 / Docker / Windows
 docs/customize.md       改提示词、换模型、加后处理
 docs/faq.md             踩过的坑和限制
+CHANGELOG.md            更新记录
 .env.example            配置模板
 ```
 

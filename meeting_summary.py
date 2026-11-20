@@ -241,10 +241,34 @@ def state_path() -> Path:
     return Path(env("STATE_FILE") or Path(__file__).resolve().parent / "state.json")
 
 
+def parse_any_json(text: str):
+    """lark-cli 有时返回对象、有时返回数组，两种都吃。"""
+    m = re.search(r"[\[{]", text)
+    if not m:
+        return None
+    try:
+        return json.JSONDecoder().raw_decode(text[m.start():])[0]
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def profiles() -> list[str]:
-    """要扫哪些账号。没配就是当前登录的那个。"""
+    """要扫哪些账号。
+
+    LARK_PROFILES 设了就按它来；没设就自动扫所有已登录的账号 ——
+    以后在机器上多登一个号，不用回来改配置。
+    """
     raw = env("LARK_PROFILES")
-    return [p.strip() for p in raw.split(",") if p.strip()] if raw else [""]
+    if raw:
+        return [p.strip() for p in raw.split(",") if p.strip()]
+    # 注意：profile list 不接受 --json，它本来就输出 JSON
+    rc, out = run([lark_cli_path(), "profile", "list"])
+    listed = parse_any_json(out) if rc == 0 else None
+    if isinstance(listed, list):
+        names = [p.get("name", "") for p in listed if isinstance(p, dict) and p.get("name")]
+        if names:
+            return names
+    return [""]
 
 
 def run(cmd: list[str], timeout: int = 300, stdin: str | None = None) -> tuple[int, str]:
@@ -297,11 +321,12 @@ def load_state() -> dict:
     except Exception:  # noqa: BLE001
         s = {}
     s.setdefault("processed", [])
-    # 兼容老版本只记 processed_notes 的状态文件
+    # 老版本只记了 processed_notes（纯 note_id，不带账号和来源）。
+    # 这里单独存一份，匹配时只看 ID 本身，免得升级后被重复处理一遍。
+    s.setdefault("legacy_ids", [])
     for old in s.get("processed_notes", []) or []:
-        key = f"legacy:vc:{old}"
-        if key not in s["processed"]:
-            s["processed"].append(key)
+        if old not in s["legacy_ids"]:
+            s["legacy_ids"].append(old)
     return s
 
 
@@ -319,6 +344,18 @@ def load_prompt(detail: str) -> str:
     if custom:
         return Path(custom).expanduser().read_text(encoding="utf-8")
     return PROMPTS.get(detail, PROMPT_STANDARD)
+
+
+def normalize_base(base: str) -> str:
+    """补上常见的路径后缀。
+
+    DeepSeek 的 Anthropic 兼容端点挂在 /anthropic 下面，但很多人（包括不少
+    现成配置）只填了 https://api.deepseek.com，于是请求打到 /v1/messages 直接 404。
+    """
+    base = base.rstrip("/")
+    if "api.deepseek.com" in base and not base.endswith("/anthropic"):
+        return base + "/anthropic"
+    return base
 
 
 def ask_model(prompt: str) -> str | None:
@@ -346,7 +383,7 @@ def ask_model(prompt: str) -> str | None:
             return None
         return out
 
-    base = env("AI_BASE_URL").rstrip("/")
+    base = normalize_base(env("AI_BASE_URL"))
     key = env("AI_API_KEY")
     model = env("AI_MODEL")
     if not (base and key and model):
@@ -373,7 +410,11 @@ def ask_model(prompt: str) -> str | None:
             if blk.get("type") == "text":
                 return blk.get("text", "").strip()
         types = [b.get("type") for b in d.get("content", [])]
-        print(f"  [AI 无正文] blocks={types} stop={d.get('stop_reason')}", file=sys.stderr)
+        stop = d.get("stop_reason")
+        print(f"  [AI 无正文] blocks={types} stop={stop}", file=sys.stderr)
+        if "thinking" in types and stop == "max_tokens":
+            print("  → 思考块把输出额度用光了。调大 AI_MAX_TOKENS（比如 16000）再试。",
+                  file=sys.stderr)
     except Exception as e:  # noqa: BLE001
         print(f"  [AI 失败] {str(e)[:200]}", file=sys.stderr)
     return None
@@ -669,6 +710,7 @@ def self_test() -> int:
     assert strip_html("<p>a<br/>b</p>") == "a\nb"
     assert parse_first_json('{"ok": true}\n[vc +detail] querying…') == {"ok": True}
     assert parse_first_json("no json here") is None
+    assert parse_any_json('[{"name":"a"},{"name":"b"}]') == [{"name": "a"}, {"name": "b"}]
     assert parse_duration_seconds("时长: 2 小时 24 分 11 秒") == 2 * 3600 + 24 * 60 + 11
     assert parse_duration_seconds("时长: 4 秒") == 4
     assert parse_duration_seconds("没有时长") == 0
@@ -744,7 +786,7 @@ def main() -> int:
 
         for src in sources:
             key = f"{profile or 'default'}:{src['source']}:{src['id']}"
-            if key in seen:
+            if key in seen or src["id"] in set(state.get("legacy_ids", [])):
                 continue
             if src.get("duration") and src["duration"] < env_int("MIN_DURATION", MIN_DURATION):
                 print(f"  跳过（只有 {src['duration']} 秒）: {src['title']}")
