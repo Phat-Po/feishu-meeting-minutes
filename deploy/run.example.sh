@@ -27,4 +27,5 @@ export AI_MODEL="${ANTHROPIC_MODEL:-}"
 # ③ 部分模型会先输出一大段思考，额度小了正文一个字都出不来
 export AI_MAX_TOKENS="${AI_MAX_TOKENS:-16000}"
 
-exec /usr/bin/python3 meeting_summary.py "$@"
+# -u 关掉输出缓冲：重定向到文件时，不加 -u 要等进程结束才看得到日志
+exec /usr/bin/python3 -u meeting_summary.py "$@"
