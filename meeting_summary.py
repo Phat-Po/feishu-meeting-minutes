@@ -48,7 +48,7 @@ MAX_CHAPTERS = 16          # 详细章节最多留多少条，防止末尾拖太
 SCHEMA = """{
   "title": "这场会到底是什么，12-20 字，不要「会议」「讨论」这种空词",
   "one_line": "一句话说清这场会干了什么，40 字以内",
-  "mindmap": "mermaid mindmap 代码，见下方要求",
+  "diagram": "mermaid flowchart 代码，见下方要求",
   "decisions": [{"what": "定了什么", "why": "为什么这么定"}],
   "todos": [{"what": "要做什么", "who": "谁（没提就写未指定）", "when": "什么时候"}],
   "quotes": [{"text": "值得记的原话", "why": "为什么值得记"}],
@@ -56,21 +56,28 @@ SCHEMA = """{
   "chapters": [{"time": "MM:SS 或 HH:MM:SS", "title": "章节名", "note": "一句话概括"}]
 }"""
 
-MINDMAP_RULE = """mindmap 字段的写法（Mermaid mindmap 语法，缩进用两个空格）：
+DIAGRAM_RULE = """diagram 字段的写法（Mermaid flowchart，必须用 subgraph 分组）：
 
-mindmap
-  root((会议主题))
-    议题一
-      要点
-      要点
-    议题二
-      要点
+flowchart LR
+  subgraph G1["议题名"]
+    A1["结论一行<br/>补充说明"]
+    A2["结论一行"]
+  end
+  subgraph G2["议题名"]
+    B1["结论一行<br/>补充说明"]
+  end
+  G1 --> G2
+  style G1 fill:#EAF4FF,stroke:#3B82F6,color:#1E3A5F
+  style G2 fill:#EAFBF2,stroke:#10B981,color:#065F46
 
 硬性要求：
-- 第一行必须是 mindmap，第二行是 root((...))
-- 主分支 3-8 个，深度最多 3 层
-- 节点文字不要出现括号、方括号、花括号、引号、冒号
-- 每个节点不超过 12 个字，长句砍成短词"""
+- 第一行必须是 flowchart LR
+- 2-5 个 subgraph，每个里面 2-4 个方框节点
+- 节点写法固定为 X["文字"]，文字里可以用 <br/> 换行，但不要出现英文双引号
+- 每个节点文字不超过 20 个字，第一行给结论，第二行给补充
+- 每个 subgraph 必须配一行 style，颜色从这四组里挑，同一张图内不要重复太多：
+  蓝 #EAF4FF / #3B82F6 | 绿 #EAFBF2 / #10B981 | 橙 #FFF7EA / #F59E0B | 灰 #F3F4F6 / #9CA3AF
+- 分组之间确实有先后或依赖时才画 -->，没有就不画"""
 
 PROMPT = """你是会议记录员。下面是一场会议的逐字稿。
 
@@ -78,7 +85,7 @@ PROMPT = """你是会议记录员。下面是一场会议的逐字稿。
 
 """ + SCHEMA + """
 
-""" + MINDMAP_RULE + """
+""" + DIAGRAM_RULE + """
 
 内容要求：
 - 只写逐字稿里真实出现的，不要推测、不要补细节。
@@ -87,7 +94,7 @@ PROMPT = """你是会议记录员。下面是一场会议的逐字稿。
 - quotes 挑 2-4 句最有信息量的原话。
 - summary 收 5-8 个议题，每个议题 1-3 条要点，每条一句话。
 - chapters 按时间顺序，最多 """ + str(MAX_CHAPTERS) + """ 条，每条一句话。
-- 全文（不含 mindmap）控制在 2000-3000 字，别写成流水账。
+- 全文（不含 diagram）控制在 2000-3000 字，别写成流水账。
 - 人名、机构名、专有名词照原样写，不要翻译。
 
 只输出 JSON 本身，不要加解释、不要加代码块标记。
@@ -118,13 +125,13 @@ REDUCE_PROMPT = """你是会议记录员。下面是一场长会议分段提取�
 
 {SCHEMA}
 
-{MINDMAP}
+{DIAGRAM}
 
 内容要求：
 - 合并同一件事的重复记录，不要重复列。
 - 分段记录里没有的内容一律不写，不要补充、不要推测。
 - summary 收 5-8 个议题，每个 1-3 条要点；chapters 最多 {MAXCHAPTERS} 条。
-- 全文（不含 mindmap）控制在 2000-3000 字。
+- 全文（不含 diagram）控制在 2000-3000 字。
 - 人名、机构名、专有名词照原样写。
 
 只输出 JSON 本身，不要加解释、不要加代码块标记。
@@ -444,7 +451,7 @@ def map_reduce(transcript: str) -> dict | None:
         print(f"  第 {i}/{len(chunks)} 块完成")
     if not facts:
         return None
-    return ask_json(REDUCE_PROMPT.format(n=len(facts), SCHEMA=SCHEMA, MINDMAP=MINDMAP_RULE,
+    return ask_json(REDUCE_PROMPT.format(n=len(facts), SCHEMA=SCHEMA, DIAGRAM=DIAGRAM_RULE,
                                          MAXCHAPTERS=MAX_CHAPTERS)
                     + "\n\n".join(facts))
 
@@ -584,39 +591,35 @@ def esc(s) -> str:
     return (str(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")).strip()
 
 
-def safe_label(s, limit: int = 12) -> str:
-    """Mermaid mindmap 的节点文字不能带括号引号这类符号，否则整张图渲染失败。"""
-    t = re.sub(r'[()\[\]{}"\'`（）【】「」『』《》〈〉<>]', " ", str(s or ""))
-    t = re.sub(r"[：:、，,。.；;！!？?|/\\]", " ", t)
+PALETTE = [("#EAF4FF", "#3B82F6", "#1E3A5F"), ("#EAFBF2", "#10B981", "#065F46"),
+           ("#FFF7EA", "#F59E0B", "#92400E"), ("#F3F4F6", "#9CA3AF", "#374151")]
+
+
+def label_text(s, limit: int = 20) -> str:
+    """方框里的文字。不能带英文双引号，否则 Mermaid 语法断掉。"""
+    t = re.sub(r'["`\n\r]', " ", str(s or ""))
     t = re.sub(r"\s+", " ", t).strip()
     return t[:limit]
 
 
-def build_mindmap(data: dict, root: str, fallback_topics: list[str]) -> str:
-    raw = str(data.get("mindmap") or "").strip()
-    if raw.startswith("mindmap") and "root" in raw:
-        # 只保留合法行，顺手清掉会破坏语法的字符
-        lines = []
-        for line in raw.split("\n"):
-            m = re.match(r"^(\s*)(.*)$", line)
-            indent, body = m.group(1), m.group(2)
-            if body.strip() == "mindmap":
-                lines.append("mindmap")
-                continue
-            # 根节点必须保留 root((...)) 这层语法，别被清洗掉
-            rm = re.match(r"^root\(\((.*)\)\)\s*$", body.strip())
-            if rm:
-                lines.append(f"{indent}root(({safe_label(rm.group(1), 14)}))")
-                continue
-            lines.append(indent + safe_label(body, 24))
+def build_diagram(data: dict, root: str, fallback_topics: list[str]) -> str:
+    """模型给的 Mermaid flowchart 直接用；不合格就按议题名拼一个兜底的分组图。"""
+    raw = str(data.get("diagram") or "").strip()
+    lines = [l.rstrip() for l in raw.split("\n") if l.strip() and not l.strip().startswith("```")]
+    if lines and re.match(r"^(flowchart|graph)\b", lines[0].strip()) and "subgraph" in raw:
         return "\n".join(lines)
 
-    root_label = safe_label(root, 14) or "会议"
-    branches = [safe_label(t, 12) for t in fallback_topics if safe_label(t, 12)][:6]
-    if not branches:
-        branches = ["内容"]
-    body = "\n".join(f"    {b}" for b in branches)
-    return f"mindmap\n  root(({root_label}))\n{body}"
+    topics = [label_text(t, 14) for t in fallback_topics if label_text(t, 14)][:4] or ["会议内容"]
+    out = ["flowchart LR"]
+    for i, t in enumerate(topics, 1):
+        fill, stroke, _ = PALETTE[(i - 1) % len(PALETTE)]
+        out.append(f'  subgraph G{i}["{t}"]')
+        out.append(f'    G{i}A["{t}"]')
+        out.append("  end")
+        out.append(f"  style G{i} fill:{fill},stroke:{stroke}")
+    for i in range(1, len(topics)):
+        out.append(f"  G{i} --> G{i + 1}")
+    return "\n".join(out)
 
 
 def time_to_ms(text: str) -> int | None:
@@ -638,10 +641,10 @@ def render_doc(data: dict, meta: dict) -> tuple[str, str]:
 
     parts: list[str] = [f"<title>{esc(doc_title)}</title>"]
 
-    mindmap = build_mindmap(data, title_core,
+    diagram = build_diagram(data, title_core,
                             [s.get("topic", "") for s in (data.get("summary") or [])])
     # 画板内容也嵌在 XML 里，尖括号和 & 必须转义，否则整篇文档解析失败
-    parts.append(f"<whiteboard type=\"mermaid\">\n{esc(mindmap)}\n</whiteboard>")
+    parts.append(f"<whiteboard type=\"mermaid\">\n{esc(diagram)}\n</whiteboard>")
 
     one = str(data.get("one_line") or "").strip()
     audio = str(meta.get("audio_url") or "").strip()
@@ -844,13 +847,11 @@ def self_test() -> int:
     assert chunk_text("单个短块", 1000) == ["单个短块"]
 
     # 思维导图节点不能带括号引号，否则整张图渲染失败
-    assert safe_label("议题（一）：讨论") == "议题 一 讨论"
-    mm = build_mindmap({"mindmap": "mindmap\n  root((主题))\n    分支(一)\n      要点"},
-                       "主题", ["兜底"])
-    lines = mm.split("\n")
-    assert lines[0] == "mindmap" and lines[1].strip().startswith("root((")
-    assert "(" not in "\n".join(lines[2:]), "分支节点不能带括号"
-    assert build_mindmap({}, "主题", ["甲", "乙"]).count("\n") == 3
+    good = "flowchart LR\n  subgraph G1[\"甲\"]\n    A1[\"要点\"]\n  end"
+    assert build_diagram({"diagram": good}, "主题", []) == good
+    fb = build_diagram({}, "主题", ["甲", "乙"])
+    assert fb.startswith("flowchart") and fb.count("subgraph") == 2 and "style G1" in fb
+    assert label_text('带"引号"的文字') == "带 引号 的文字"
 
     # 渲染出的 XML 必须转义干净
     _t, xml = render_doc({
