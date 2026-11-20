@@ -30,14 +30,24 @@
 
 | 权限代码 | 中文名 | 干什么用 | 不开会怎样 |
 |---|---|---|---|
-| `vc:meeting.search:read` | 获取会议记录 | 搜出你参加过的会议 | 一场会都找不到 |
+| `vc:meeting.search:read` | 获取会议记录 | 搜出你参加过的线上会议 | 找不到线上会议 |
 | `vc:note:read` | 获取会议笔记 | 读笔记详情，拿逐字稿地址 | 找到会议也读不到内容 |
 | `docx:document:readonly` | 查看新版文档 | 读逐字稿正文 | 逐字稿拉不下来 |
-| `im:message:send_as_bot` | 以应用身份发消息 | 让机器人把纪要卡片发给你 | 总结生成了但推不出去 |
+| `minutes:minutes.basic:read` | 查看妙记基本信息 | 知道上传的录音有哪些 | 上传的录音全看不到 |
+| `minutes:minutes.search:read` | 搜索妙记 | 按时间列出妙记 | 找不到上传的录音 |
+| `minutes:minutes.artifacts:read` | 获取妙记产物 | 下载妙记的逐字稿 | 有录音但拉不到文字 |
+| `docx:document:create` | 创建新版文档 | 把纪要存成飞书文档 | 总结写完了没地方存 |
+| `im:message:send_as_bot` | 以应用身份发消息 | 机器人把卡片推给你 | 文档建好了但没通知 |
 
-**关于第 4 条**：如果你不想让机器人发，改成用你自己的账号发，就换成
-`im:message.send_as_user`，脚本里把 `--as bot` 改成 `--as user`。
-机器人发的好处是不占你的账号、卡片有独立的发送者身份。
+**只开一部分行不行？**
+
+- 只处理线上会议 → 前三条 + 建文档 + 发消息
+- 只处理上传录音 → 中间三条 + 建文档 + 发消息
+- 不想收卡片 → 可以不开最后一条，脚本会自动跳过推送
+
+**关于发消息那两条**：`im:message:send_as_bot` 是让机器人发，
+`im:message.send_as_user` 是用你自己的账号发。
+脚本默认先试机器人，失败会自动退回用你自己的身份 —— 所以两个开一个就能用。
 
 > 权限名在控制台里可能显示成「获取会议信息」「查看、评论和导出文档」之类的中文，
 > 直接搜代码里的英文名最准。
@@ -86,7 +96,7 @@ lark-cli config init
 然后授权：
 
 ```bash
-lark-cli auth login --scope "vc:meeting.search:read vc:note:read docx:document:readonly im:message:send_as_bot"
+lark-cli auth login --scope "vc:meeting.search:read vc:note:read docx:document:readonly docx:document:create minutes:minutes.basic:read minutes:minutes.search:read minutes:minutes.artifacts:read im:message:send_as_bot"
 ```
 
 它会给你一个链接或二维码，在浏览器里点同意。授权是**以你个人的身份**读会议数据 ——

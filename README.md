@@ -10,7 +10,7 @@
 
 ### M E E T I N G &nbsp; M I N U T E S
 
-**开完会，纪要自己发到飞书上。**
+**开完会，纪要自己写好，存进飞书。**
 
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -21,60 +21,69 @@
 
 ---
 
-> **English** — A small tutorial project that turns your Feishu/Lark meeting transcripts into AI-written
-> minutes and pushes them to you as a card. Runs on your own laptop or any server, works with any
-> model (Claude, DeepSeek, Codex, Ollama, or your own script). No SDK, no framework, one Python file.
+> **English** — Turns Feishu/Lark transcripts into proper written minutes and saves them as a
+> Feishu doc. Handles both online meetings and uploaded recordings (dictaphone, phone, any audio
+> you drop into Drive). Works with any model — Claude, DeepSeek, Codex, Ollama, or your own
+> command. One Python file, no dependencies.
 
 ---
 
 ## 这个项目干什么
 
-飞书会议结束后，如果这场会生成了**会议笔记 / 纪要**，飞书里就已经有一份带说话人的逐字稿了。
+飞书里其实有两种「会」：
 
-这个脚本做的就是：
+1. **线上会议** —— 用飞书视频会议开的，会后有会议笔记和逐字稿
+2. **上传录音** —— 用录音笔、手机录完传上去，飞书会把它转成妙记和逐字稿
+
+两种飞书都会处理，但生成的「智能纪要」往往很短 —— 两个半小时的会可能只给你三百字。
+
+这个脚本读那份完整的逐字稿，重新写一份**能直接看、能直接发给人**的纪要，存成飞书文档，再推一张卡片带链接给你。
 
 ```
-找到最近的会议 → 找到它的笔记 → 拉下逐字稿 → 丢给大模型 → 生成纪要 → 发到你飞书
+找到会议 / 录音 → 拉逐字稿 → 清洗 → AI 总结 → 建飞书文档 → 推卡片
 ```
-
-它不替代飞书自带的纪要，而是给你一份**能直接看、直接转发的短版本**：一句话结论、讨论要点、决定了什么、谁要做什么、下次约在什么时候。
 
 **适合谁**
 
-- 一天开好几场会，会后懒得翻长逐字稿的人
-- 想把会议结论自动落到飞书、不想手动复制粘贴的人
-- 想基于逐字稿再自动做点别的事（存文件、发群、写多维表格、同步 Obsidian……）的人
+- 经常开会或听讲，事后懒得翻几万字逐字稿的人
+- 用录音笔录东西（课堂、共修、访谈、灵感），想要一份能回看的文字稿的人
+- 想把会议结论自动落成文档、不想手动复制粘贴的人
 
 **不适合谁**
 
-- 没开飞书会议笔记的会 —— 没有逐字稿就没有东西可总结
-- 想要「会中实时字幕」的 —— 这个只做事后总结
+- 没生成逐字稿的会 —— 没有稿子就没有东西可总结
+- 想要「会中实时字幕」的 —— 这个只做事后
 
 ## 长什么样
 
-钉在飞书里的卡片大概长这样（示例，内容是编的）：
+生成出来的飞书文档有这几节（示例，内容是编的）：
 
 > **会议总结 · 双十一备货复盘**
 >
-> **双十一备货复盘**
-> 2026-11-05 14:00
->
-> **一句话**：定下了双十一主推的三个款和首批备货量。
->
-> **讨论内容**
-> - 主推款从五个收窄到三个，集中预算
-> - 仓库 11 月 8 日前必须到货，否则走空运
-> - 客服话术要补上缺货时的替换方案
->
-> **决定**：主推 A/B/C 三款，首批各 500 件。
+> **总结**
+> 定下了双十一主推的三个款和首批备货量。
+> - 主推款从五个收窄到三个
+>   - 集中预算，单款投入翻倍
+>   - 落选的款转清库存
 >
 > **待办**
-> - 小王 11/6 前确认工厂交期
-> - 小李 11/7 前更新客服话术
+> | 事项 | 负责人 | 时间 |
+> |---|---|---|
+> | 确认工厂交期 | 小王 | 11/6 |
+> | 更新客服话术 | 小李 | 11/7 |
 >
-> **时间安排**：11/8 到货，11/10 开卖。
+> **智能章节**
+> **[00:12:30] 备货量怎么定**
+> > 按去年销量和今年预售数据倒推，留两周缓冲。
+>
+> **关键决策**
+> 主推 A/B/C 三款，首批各 500 件。
+>
+> **金句时刻**
+> 「宁可少卖，也别压死现金流。」
+> —— 定下了这次备货的底线。
 
-卡片底部还有一行小字「会议自动总结」，右上角是蓝色标题栏。
+卡片会同时推给你，带一个「看完整纪要」按钮直接跳文档。
 
 ## 三步跑起来
 
@@ -87,40 +96,59 @@ lark-cli config init          # 会让你填飞书应用的 App ID 和 App Secre
 
 还没有飞书应用？看 **[飞书配置教程](docs/feishu-setup.md)**，从建应用到开权限一步步写好了。
 
-### 2. 拿到自己的用户 ID
+### 2. 登录授权
 
 ```bash
-lark-cli contact +get-user --json
+lark-cli auth login --scope "vc:meeting.search:read vc:note:read docx:document:readonly docx:document:create minutes:minutes.basic:read minutes:minutes.search:read minutes:minutes.artifacts:read im:message:send_as_bot"
 ```
-
-返回里的 `open_id`（`ou_` 开头那串）就是要发给你的地址。
 
 ### 3. 跑一次看看
 
 ```bash
-export OPERATOR_OPEN_ID="ou_你的用户ID"
 export AI_BASE_URL="https://api.anthropic.com"
 export AI_API_KEY="sk-ant-..."
 export AI_MODEL="claude-sonnet-5-5"
 
-python3 meeting_summary.py --dry-run --lookback 7   # 先空跑，只打印不发消息
-python3 meeting_summary.py --lookback 2             # 确认没问题再真发
+python3 meeting_summary.py --dry-run --lookback 7   # 先空跑，只打印，不建文档
+python3 meeting_summary.py --lookback 2             # 确认没问题再真跑
 ```
 
-只想跑一次、不想配环境变量？也可以直接写在命令行前面：
+`--dry-run` 不会建文档、不会发卡片、不写状态文件，可以放心反复试。
+
+## 三个详细度
+
+纪要该多长，由你定：
 
 ```bash
-OPERATOR_OPEN_ID=ou_xxx AI_BASE_URL=... AI_API_KEY=... AI_MODEL=... \
-  python3 meeting_summary.py --lookback 2
+python3 meeting_summary.py --detail brief      # 约 700 字，扫一眼
+python3 meeting_summary.py --detail standard   # 约 2-3 千字，默认
+python3 meeting_summary.py --detail full        # 约 5-8 千字，带逐字稿脉络
 ```
+
+想先看看某档长什么样，不用跑全流程：
+
+```bash
+python3 meeting_summary.py --detail full --print-prompt
+```
+
+## 长会议怎么处理
+
+两个半小时的会，逐字稿能到四万字。整段丢给模型，中间的内容容易被忽略。
+
+脚本会在逐字稿超过 **3 万字**时自动切换成两段式：
+
+1. **分块提炼** —— 切成几块，每块只提事实（议题、决定、待办、原话），不写散文
+2. **合并成文** —— 把所有事实合成一份完整纪要
+
+关键是提事实而不是提摘要。先写散文再合并，细节会一层层磨没。
+
+字数阈值可以调：`CHUNK_ABOVE`、`CHUNK_SIZE`。
 
 ## 模型怎么接
 
 脚本对「谁来总结」没有意见。两种接法，选一种：
 
-### 方式一：任何 Anthropic 兼容接口（最简单）
-
-填三个环境变量就行：
+### 方式一：任何 Anthropic 兼容接口
 
 | 变量 | 例子 |
 |---|---|
@@ -128,55 +156,58 @@ OPERATOR_OPEN_ID=ou_xxx AI_BASE_URL=... AI_API_KEY=... AI_MODEL=... \
 | `AI_API_KEY` | `sk-ant-...` |
 | `AI_MODEL` | `claude-sonnet-5-5` |
 
-Claude 官方、DeepSeek、以及各种兼容 Anthropic 协议的网关和本地代理都走这一条。
-换个服务商只改 `AI_BASE_URL`，代码一行不动。
+Claude 官方、DeepSeek、各种兼容 Anthropic 协议的网关和本地代理都走这一条。
+换服务商只改 `AI_BASE_URL`，代码一行不动。
 
-> 注意：部分推理模型会先输出一大段思考内容。脚本的 `max_tokens` 留了 8000，
-> 就是为了不让思考块把正文吃掉。如果你换成思考特别长的模型还不够，把它调大。
-
-### 方式二：交给你自己的命令（最自由）
-
-设一个 `SUMMARY_CMD`，脚本会把「提示词 + 逐字稿」从标准输入灌进去，
-命令的输出就是纪要：
+### 方式二：交给你自己的命令
 
 ```bash
-export SUMMARY_CMD="claude -p"          # 用本机已登录的 Claude Code
-export SUMMARY_CMD="codex exec -"       # 用 Codex
-export SUMMARY_CMD="ollama run qwen3"   # 用本地模型
-export SUMMARY_CMD="python3 my_chain.py"  # 用你自己的脚本
+export SUMMARY_CMD="claude -p"          # 本机已登录的 Claude Code
+export SUMMARY_CMD="codex exec -"       # Codex
+export SUMMARY_CMD="ollama run qwen3"   # 本地模型
 ```
 
-**约定**：命令成功时退出码为 0，失败时**必须返回非 0**。
-否则脚本会把报错信息当成会议纪要发出去 —— 这个坑我们踩过，见 [FAQ](docs/faq.md)。
-
-这条路的好处是不用管密钥：命令自己负责认证。缺点是每个工具的超时和输出格式不一样，
-第一次接的时候建议先用一条固定文本手工试：
-
-```bash
-echo "测试" | claude -p
-```
+「提示词 + 逐字稿」从标准输入进来，纪要从标准输出出去。
+**成功退出码 0，失败必须非 0** —— 否则报错信息会被当成会议纪要存进文档。
 
 ## 配置项
 
 | 环境变量 | 必填 | 说明 |
 |---|---|---|
-| `OPERATOR_OPEN_ID` | 是 | 纪要发给谁。`--dry-run` 时可省 |
-| `SUMMARY_CMD` | 否 | 自定义总结命令，优先级高于下面三个 |
-| `AI_BASE_URL` | 否 | Anthropic 兼容接口地址 |
-| `AI_API_KEY` | 否 | 接口密钥 |
-| `AI_MODEL` | 否 | 模型名 |
+| `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | 二选一 | 接口方式 |
+| `SUMMARY_CMD` | 二选一 | 命令方式，设了就忽略上面三个 |
+| `LARK_PROFILES` | 否 | 要扫哪些账号，逗号分隔。不填就扫当前登录的 |
+| `OPERATOR_OPEN_ID` | 否 | 卡片固定发给谁。不填就发给每个账号自己 |
 | `PROMPT_FILE` | 否 | 换成你自己的提示词文件 |
+| `MIN_DURATION` | 否 | 录音短于多少秒跳过，默认 120 |
+| `MIN_CHARS` | 否 | 逐字稿短于多少字跳过，默认 600 |
+| `CHUNK_ABOVE` / `CHUNK_SIZE` | 否 | 分块阈值 / 每块大小 |
+| `AI_MAX_TOKENS` | 否 | 输出上限，默认 8000 |
 | `STATE_FILE` | 否 | 已处理记录存哪，默认脚本同目录 `state.json` |
 | `LARK_CLI` | 否 | `lark-cli` 不在 PATH 里时手动指定路径 |
 
-> `.env` 文件不会自动读。想用 `.env`，自己加一行 `export $(grep -v '^#' .env | xargs)`，
-> 或者交给 systemd / launchd / Docker 去注入。
+> `.env` 不会自动读。自己 `export`，或者交给 launchd / cron / Docker 注入。
+
+## 多个账号
+
+设备可能会换账号，录音也可能存在不同的号里。脚本支持一次扫多个：
+
+```bash
+export LARK_PROFILES="cli_xxxxxxxx,cli_yyyyyyyy"
+```
+
+- 每个号各查各的会议和录音，互不影响
+- **文档建在录音所属的那个账号的云盘里**，不会串号
+- 卡片发给每个账号自己（除非你设了 `OPERATOR_OPEN_ID`）
+- 某个号登录过期，只跳过它，其他号照常跑
+
+账号名用 `lark-cli profile list` 查。
 
 ## 让它定时跑
 
-脚本本身只跑一次就退出。要自动总结，找个东西定时拉起它就行。
+脚本只跑一次就退出，找个东西定时拉起它：
 
-**自己的电脑（macOS）** —— `launchd`，每 10 分钟一次：
+**自己的电脑（macOS）** —— `launchd`，每 10 分钟：
 
 ```bash
 cat > ~/Library/LaunchAgents/com.me.meeting-minutes.plist <<'EOF'
@@ -187,7 +218,6 @@ cat > ~/Library/LaunchAgents/com.me.meeting-minutes.plist <<'EOF'
   <key>ProgramArguments</key>
   <array><string>/usr/bin/python3</string><string>/绝对路径/meeting_summary.py</string></array>
   <key>EnvironmentVariables</key><dict>
-    <key>OPERATOR_OPEN_ID</key><string>ou_xxx</string>
     <key>AI_BASE_URL</key><string>https://api.anthropic.com</string>
     <key>AI_API_KEY</key><string>sk-ant-...</string>
     <key>AI_MODEL</key><string>claude-sonnet-5-5</string>
@@ -207,51 +237,53 @@ launchctl load ~/Library/LaunchAgents/com.me.meeting-minutes.plist
 */10 * * * * cd /path/to/repo && /usr/bin/python3 meeting_summary.py >> run.log 2>&1
 ```
 
-**不想装定时任务** —— 开会前手动跑，或者直接在 Claude Code 里让它跑：
+**不想装定时任务** —— 直接在 Claude Code 里让它跑：
 
 ```text
 帮我在这个目录跑一下 meeting_summary.py --lookback 1
 ```
 
-更多跑法（Windows、Docker、交给 AI 助手）见 **[运行方式](docs/run-it.md)**。
+更多跑法（Windows、Docker、常驻）见 **[运行方式](docs/run-it.md)**。
 
 ## 自定义
 
-- **改总结格式** → `--print-prompt` 导出提示词，改完用 `PROMPT_FILE` 指过去，代码不动
-- **加后处理** → 用 `--out-dir notes` 存本地 Markdown，再接你自己的脚本
-- **换输出渠道** → 卡片是 `send_card()` 一个函数，想发群里就换 `--chat-id`
+- **改总结格式** → `--print-prompt` 导出提示词，改完用 `PROMPT_FILE` 指过去
+- **加后处理** → 用 `--out-dir notes` 另外存一份本地 Markdown
+- **只处理一种来源** → `--source minutes` 或 `--source vc`
 
-详细做法和示例见 **[自定义指南](docs/customize.md)**。
+详细做法见 **[自定义指南](docs/customize.md)**。
 
 ## 需要的飞书权限
 
-四条，缺一不可：
+**线上会议**（前三条）+ **上传录音**（中间三条）+ **写文档**：
 
 | 权限 | 干什么 | 不开会怎样 |
 |---|---|---|
-| `vc:meeting.search:read` | 搜出你参加过的会议 | 一场会都找不到 |
-| `vc:note:read` | 读会议笔记，拿逐字稿的地址 | 找到会也读不到内容 |
+| `vc:meeting.search:read` | 搜出你参加过的会议 | 找不到线上会议 |
+| `vc:note:read` | 读会议笔记，拿逐字稿地址 | 找到会也读不到内容 |
 | `docx:document:readonly` | 读逐字稿正文 | 逐字稿拉不下来 |
-| `im:message:send_as_bot` | 让机器人把卡片发给你 | 总结生成了但推不出去 |
+| `minutes:minutes.basic:read` | 读妙记基本信息 | 上传的录音全看不到 |
+| `minutes:minutes.search:read` | 搜妙记列表 | 找不到上传的录音 |
+| `minutes:minutes.artifacts:read` | 下载妙记的逐字稿 | 有录音但拉不到字 |
+| `docx:document:create` | 新建飞书文档 | 总结写完了没地方存 |
+| `im:message:send_as_bot` | 机器人推卡片给你 | 文档建好了但没通知 |
 
-开通方式和对应的控制台位置见 **[飞书配置教程](docs/feishu-setup.md)**。
+开通方式见 **[飞书配置教程](docs/feishu-setup.md)**。
 
 ## 常见问题
 
-**为什么跑出来 0 场会议？**
-只有**生成了会议笔记**的会议才有逐字稿。没开笔记的会，搜得到也总结不了。
-另外 `--lookback` 只回看最近 N 天，别设太小。
+**跑出来 0 条？**
+只有生成了逐字稿的会才有内容。短于 2 分钟的录音会被当成误触跳过（可调 `MIN_DURATION`）。
 
 **为什么要等 10 分钟？**
-因为默认用轮询。飞书的事件订阅可以做到秒级，但会议类事件在部分应用类型下
-控制台里订不上，所以这个项目默认走最稳的路。想试事件推送见 [FAQ](docs/faq.md)。
+默认轮询。飞书的事件订阅能秒级，但会议类事件在部分应用类型下控制台里订不上，
+所以走最稳的路。想试事件推送见 [FAQ](docs/faq.md)。
 
 **卡片没收到？**
-先看脚本输出里有没有「推送 失败」；再确认机器人是不是你的好友 / 能不能给你发单聊。
+看脚本输出里有没有「卡片发送失败」。机器人身份发不出去时脚本会自动改用你的用户身份。
 
-**会不会重复发？**
-不会。处理过的笔记 ID 记在 `state.json` 里，下次跳过。
-想重发就把对应 ID 从里面删掉。
+**同一个会会不会重复建文档？**
+不会。处理过的记录记在 `state.json`，下次跳过。想重做就删掉对应那条。
 
 更多见 **[FAQ](docs/faq.md)**。
 
@@ -268,9 +300,9 @@ docs/faq.md             踩过的坑和限制
 
 ## 它不做什么
 
-- 不存你的逐字稿，只存在内存里过一遍
+- 不存你的逐字稿，只在内存里过一遍
 - 不上传任何东西到第三方，除了你自己配的那个模型接口
-- 不改你飞书里的原始纪要
+- 不改飞书里原有的妙记和智能纪要
 
 ## License
 
