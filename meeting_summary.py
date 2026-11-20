@@ -563,17 +563,37 @@ def summarize(transcript: str, detail: str) -> str | None:
 
 # ─────────────────────────── 两个数据源 ───────────────────────────
 
+def page_all(profile: str, args: list[str], path=("data", "items")) -> list[dict]:
+    """把分页拉完。接口一页最多 30 条，不翻页会静默漏数据。"""
+    out: list[dict] = []
+    token = ""
+    while True:
+        page_args = [*args, "--page-size", "30"]
+        if token:
+            page_args += ["--page-token", token]
+        d = lark_json(profile, page_args)
+        if not d or not d.get("ok"):
+            if not out:
+                print(f"  [查询失败] {str(d)[:160]}", file=sys.stderr)
+            break
+        data = d.get("data") or {}
+        cur = data
+        for k in path:
+            cur = (cur or {}).get(k, []) if isinstance(cur, dict) else []
+        out += cur or []
+        token = data.get("page_token") or ""
+        if not data.get("has_more") or not token:
+            break
+    return out
+
+
 def scan_vc(profile: str, days: int) -> list[dict]:
     """线上会议：只有生成了会议笔记的才有逐字稿。"""
     end = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
     start = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
-    d = lark_json(profile, ["vc", "+search", "--as", "user", "--start", start,
-                            "--end", end, "--page-size", "30"])
-    if not d or not d.get("ok"):
-        print(f"  [线上会议] 查询失败: {str(d)[:160]}", file=sys.stderr)
-        return []
     out = []
-    for m in d.get("data", {}).get("items", []):
+    for m in page_all(profile, ["vc", "+search", "--as", "user", "--start", start,
+                                "--end", end]):
         mid = m.get("id")
         if not mid:
             continue
@@ -606,13 +626,9 @@ def scan_minutes(profile: str, days: int) -> list[dict]:
     """上传录音：飞书转成的妙记。"""
     end = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
     start = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
-    d = lark_json(profile, ["minutes", "+search", "--as", "user", "--owner-ids", "me",
-                            "--start", start, "--end", end, "--page-size", "30"])
-    if not d or not d.get("ok"):
-        print(f"  [上传录音] 查询失败: {str(d)[:160]}", file=sys.stderr)
-        return []
     out = []
-    for it in d.get("data", {}).get("items", []):
+    for it in page_all(profile, ["minutes", "+search", "--as", "user", "--owner-ids", "me",
+                                 "--start", start, "--end", end]):
         token = it.get("token")
         if not token:
             continue
