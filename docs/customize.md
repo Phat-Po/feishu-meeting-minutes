@@ -4,29 +4,30 @@
 
 ---
 
-## 先选个详细度
+## 改文档结构
 
-大部分时候不用改提示词，换个档位就够了：
-
-```bash
-python3 meeting_summary.py --detail brief      # 约 700 字
-python3 meeting_summary.py --detail standard   # 约 2-3 千字（默认）
-python3 meeting_summary.py --detail full        # 约 5-8 千字，多一节「逐字稿脉络」
-```
-
-想先看某一档的提示词长什么样：
+现在只有一种结构（导图 → 一句话 → 决策 → 待办 → 金句 → 总结 → 详细章节），
+不再分档。想改，就改提示词里那段 JSON 说明：
 
 ```bash
-python3 meeting_summary.py --detail full --print-prompt
+python3 meeting_summary.py --print-prompt > my-prompt.txt
 ```
 
-三档的区别：
+改完：
 
-| 档位 | 有什么 | 适合 |
-|---|---|---|
-| `brief` | 一句话 + 要点 + 决定 + 待办 | 快速扫一眼，手机上读 |
-| `standard` | 加「智能章节」「关键决策」「金句时刻」，分层展开 | 存档、转发给同事 |
-| `full` | 再加整场会的脉络梳理，金句多一倍 | 没参会但要完全掌握内容 |
+```bash
+export PROMPT_FILE="$PWD/my-prompt.txt"
+```
+
+**常见的几种改法**：
+
+- **只想更短**：把「全文控制在 2000-3000 字」改成 1000-1500，summary 收到 3-5 个议题
+- **不要思维导图**：把 `mindmap` 字段从 JSON 说明里删掉，代码会自动用议题名兜底
+- **待办要多**：把 `todos` 上限从 8 条改大（`render_doc` 里的 `todos[:8]`）
+- **不要详细章节**：把 `chapters` 从 JSON 说明里删掉，最后一节就不生成了
+
+> 分块模式（超长逐字稿）用的是内置的合并模板，**不会**用你的 `PROMPT_FILE`。
+> 改结构要两边都改，或者把 `CHUNK_ABOVE` 调大让分块不触发。
 
 ## 长会议会被自动分块
 
@@ -52,48 +53,17 @@ export CHUNK_SIZE=20000    # 每块目标 2 万字
 
 ---
 
-## 改总结格式
+## 几个常见改法
 
-把默认提示词导出来：
+**给老板看的版本** —— 把 summary 压到 3-5 个议题，todos 只留真正有人负责的：
 
-```bash
-python3 meeting_summary.py --print-prompt > my-prompt.txt
-```
+在提示词里把「summary 收 5-8 个议题」改成「3-5 个，只要结论和风险」。
 
-这会把脚本里内置的提示词原样打印出来，你直接在上面改。
+**给执行团队看的版本** —— 让 todos 更细：
 
-改完指定它：
+在 JSON 说明里给 todos 加一个 `accept` 字段（验收标准），正文里提示「没有明确负责人的任务不要编」。
 
-```bash
-export PROMPT_FILE="$PWD/my-prompt.txt"
-```
-
-### 几个常见改法
-
-**给老板看的版本** —— 删掉讨论过程，只留结论：
-
-```text
-请只输出三部分：
-结论：（这场会定下来的事，一行一条）
-风险：（会上提到的隐患或没解决的问题，没有就写「无」）
-下一步：（谁、什么时候、做什么）
-
-不要复述讨论过程，不要写「大家一致认为」这种空话。
-```
-
-**给执行团队看的版本** —— 要具体到可执行：
-
-```text
-请输出任务清单，每条包含：
-- 负责人（从逐字稿里的说话人判断，判断不出就写「待定」）
-- 具体动作（动词开头，可执行）
-- 截止时间（会上提到的就写，没提就写「未定」）
-- 验收标准（做到什么程度算完成）
-
-用 Markdown 表格输出。没有明确负责人的任务不要编。
-```
-
-**英文会议要求英文纪要** —— 在提示词开头加：
+**英文会议要求英文纪要** —— 在提示词开头加一句：
 
 ```text
 Always respond in English, regardless of the transcript language.
