@@ -563,6 +563,13 @@ def summarize(transcript: str, detail: str) -> str | None:
 
 # ─────────────────────────── 两个数据源 ───────────────────────────
 
+def _dig(obj, path):
+    cur = obj
+    for k in path:
+        cur = (cur or {}).get(k) if isinstance(cur, dict) else None
+    return cur
+
+
 def page_all(profile: str, args: list[str], path=("data", "items")) -> list[dict]:
     """把分页拉完。接口一页最多 30 条，不翻页会静默漏数据。"""
     out: list[dict] = []
@@ -577,9 +584,7 @@ def page_all(profile: str, args: list[str], path=("data", "items")) -> list[dict
                 print(f"  [查询失败] {str(d)[:160]}", file=sys.stderr)
             break
         data = d.get("data") or {}
-        cur = data
-        for k in path:
-            cur = (cur or {}).get(k, []) if isinstance(cur, dict) else []
+        cur = _dig(d, path)
         out += cur or []
         token = data.get("page_token") or ""
         if not data.get("has_more") or not token:
@@ -767,6 +772,10 @@ def self_test() -> int:
     assert parse_first_json('{"ok": true}\n[vc +detail] querying…') == {"ok": True}
     assert parse_first_json("no json here") is None
     assert parse_any_json('[{"name":"a"},{"name":"b"}]') == [{"name": "a"}, {"name": "b"}]
+
+    # 分页路径不能多下钻一层（data.items 写成 data.data.items 会永远返回空）
+    assert _dig({"data": {"items": [1, 2]}}, ("data", "items")) == [1, 2]
+    assert _dig({"data": {}}, ("data", "items")) is None
     assert parse_duration_seconds("时长: 2 小时 24 分 11 秒") == 2 * 3600 + 24 * 60 + 11
     assert parse_duration_seconds("时长: 4 秒") == 4
     assert parse_duration_seconds("没有时长") == 0
