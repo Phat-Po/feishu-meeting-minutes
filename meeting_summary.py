@@ -912,6 +912,11 @@ def main() -> int:
 
             transcript = fetch_transcript(src)
             raw_len = len(transcript)
+            # 用 --only 直接按 ID 拉的时候拿不到日期，从逐字稿首行补
+            if not src.get("when"):
+                m = re.match(r"(\d{4}-\d{2}-\d{2})", transcript)
+                if m:
+                    src["when"] = m.group(1)
             transcript = clean_transcript(transcript)
             if len(transcript) < env_int("MIN_CHARS", MIN_CHARS):
                 print(f"  跳过（逐字稿只有 {len(transcript)} 字）: {src['title']}")
