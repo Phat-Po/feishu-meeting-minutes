@@ -766,6 +766,8 @@ def main() -> int:
     state = load_state()
     seen = set(state["processed"])
     total_new = 0
+    failed = 0
+    auth_failed = 0
 
     for profile in profiles():
         label = profile or "默认账号"
@@ -774,6 +776,7 @@ def main() -> int:
             if st and not (st.get("identities", {}).get("user", {}) or {}).get("available"):
                 print(f"[{label}] 登录已失效，跳过。重新登录：lark-cli auth login --profile {profile}",
                       file=sys.stderr)
+                auth_failed += 1
                 continue
 
         sources: list[dict] = []
@@ -805,6 +808,7 @@ def main() -> int:
             summary = summarize(transcript, args.detail)
             if not summary:
                 print("  总结失败，下次重试", file=sys.stderr)
+                failed += 1
                 continue
 
             title = f"会议纪要：{src['title']}"
@@ -820,6 +824,9 @@ def main() -> int:
                 if doc_url:
                     print(f"  文档: {doc_url}")
                     send_card(profile, title, digest_of(summary), doc_url)
+                else:
+                    failed += 1
+                    continue
             if args.out_dir:
                 d = Path(args.out_dir).expanduser()
                 d.mkdir(parents=True, exist_ok=True)
@@ -832,9 +839,11 @@ def main() -> int:
 
     state["processed"] = sorted(seen)
     state["last_run"] = now()
+    # 给心跳检查用：区分「跑了但全失败」和「跑了且正常」
+    state["last_result"] = {"new": total_new, "failed": failed, "auth_failed": auth_failed}
     if not args.dry_run:
         save_state(state)
-    print(f"  本次新增纪要 {total_new} 条")
+    print(f"  本次新增纪要 {total_new} 条，失败 {failed} 条，账号异常 {auth_failed} 个")
     return 0
 
 

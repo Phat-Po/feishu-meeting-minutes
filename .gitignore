@@ -9,6 +9,9 @@ run.log
 *.log
 notes/
 
+# 部署机本地的启动脚本（每台机器路径不同，模板见 deploy/）
+run.sh
+
 # Python
 __pycache__/
 *.py[cod]

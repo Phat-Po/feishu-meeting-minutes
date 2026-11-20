@@ -246,7 +246,37 @@ launchctl load ~/Library/LaunchAgents/com.me.meeting-minutes.plist
 帮我在这个目录跑一下 meeting_summary.py --lookback 1
 ```
 
+> 服务器上别直接在 crontab 里写 `python3`：cron 的 PATH 很短，
+> npm 全局装的 `lark-cli` 会找不到，而且**静默失败**、日志里看不出原因。
+> 用 `deploy/run.example.sh` 那个模板包一层。
+
 更多跑法（Windows、Docker、常驻）见 **[运行方式](docs/run-it.md)**。
+
+## 任务挂了会告诉你
+
+定时任务最怕的不是报错，是**安静地停掉** —— 你以为它在跑，其实已经一周没动了。
+
+`heartbeat.py` 就是查这个的。它看三件事：
+
+- 最后一次运行是多久以前（默认超过 30 小时就报警）
+- 上次跑有没有处理失败的
+- 飞书登录有没有过期
+
+一切正常就什么都不做，不打扰你。
+
+```bash
+python3 heartbeat.py --dry-run      # 先看看现在的状态
+python3 heartbeat.py                # 有问题就发飞书消息
+```
+
+挂一条独立定时任务，每天早上查一次：
+
+```cron
+0 9 * * * cd /path/to/repo && /usr/bin/python3 heartbeat.py >> heartbeat.log 2>&1
+```
+
+> **这不是机器监控。** CPU、内存、磁盘那些用专门的监控工具（比如 Beszel、Uptime Kuma）。
+> 机器活着不等于任务跑成功了，两件事要分开看。
 
 ## 自定义
 
@@ -293,13 +323,15 @@ launchctl load ~/Library/LaunchAgents/com.me.meeting-minutes.plist
 ## 项目结构
 
 ```
-meeting_summary.py      主脚本，单文件，只用 Python 标准库
-docs/feishu-setup.md    飞书应用配置：建应用、开权限、发布、授权
-docs/run-it.md          怎么跑：本机 / 服务器 / 定时任务 / Docker / Windows
-docs/customize.md       改提示词、换模型、加后处理
-docs/faq.md             踩过的坑和限制
-CHANGELOG.md            更新记录
-.env.example            配置模板
+meeting_summary.py        主脚本，单文件，只用 Python 标准库
+heartbeat.py              检查定时任务有没有在跑
+deploy/run.example.sh     服务器上定时任务的启动器模板
+docs/feishu-setup.md      飞书应用配置：建应用、开权限、发布、授权
+docs/run-it.md            怎么跑：本机 / 服务器 / 定时任务 / Docker / Windows
+docs/customize.md         改提示词、换模型、加后处理
+docs/faq.md               踩过的坑和限制
+CHANGELOG.md              更新记录
+.env.example              配置模板
 ```
 
 ## 它不做什么
