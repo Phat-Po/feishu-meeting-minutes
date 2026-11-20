@@ -1,0 +1,20 @@
+# 密钥
+.env
+.env.*
+!.env.example
+
+# 运行状态
+state.json
+run.log
+*.log
+notes/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 系统
+.DS_Store
+Thumbs.db
