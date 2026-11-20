@@ -6,18 +6,13 @@
 
 ## 改总结格式
 
-把默认提示词复制出来：
+把默认提示词导出来：
 
 ```bash
-cp meeting_summary.py /tmp/x.py && python3 - <<'EOF'
-import re, pathlib
-src = pathlib.Path("meeting_summary.py").read_text()
-m = re.search(r'DEFAULT_PROMPT = """(.*?)"""', src, re.S)
-pathlib.Path("my-prompt.txt").write_text(m.group(1))
-EOF
+python3 meeting_summary.py --print-prompt > my-prompt.txt
 ```
 
-（其实就是把 `meeting_summary.py` 里 `DEFAULT_PROMPT` 那段抄到 `my-prompt.txt`。）
+这会把脚本里内置的提示词原样打印出来，你直接在上面改。
 
 改完指定它：
 
@@ -140,7 +135,7 @@ python3 meeting_summary.py --out-dir ~/Documents/meeting-notes
 "--chat-id", "oc_你的群ID",
 ```
 
-群 ID 用 `lark-cli im +search-chat` 之类的命令能查到。
+群 ID 用 `lark-cli im +chat-search --query "群名" --json` 能查到。
 
 ### 同步到别的地方
 

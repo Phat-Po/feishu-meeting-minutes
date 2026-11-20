@@ -1,11 +1,11 @@
 <div align="center">
 
 <pre>
-██████ ██████ ██ ██████ ██  ██ ██  ██
-██     ██     ██ ██     ██  ██ ██  ██
-█████  █████  ██ ██████ ██████ ██  ██
-██     ██     ██     ██ ██  ██ ██  ██
-██     ██████ ██ ██████ ██  ██  ████
+██████ ██████ ██     ██████ ██  ██ ██  ██
+██     ██     ██     ██     ██  ██ ██  ██
+█████  █████  ██     ██████ ██████ ██  ██
+██     ██     ██         ██ ██  ██ ██  ██
+██     ██████ ██     ██████ ██  ██  ████
 </pre>
 
 ### M E E T I N G &nbsp; M I N U T E S
@@ -15,7 +15,7 @@
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Feishu](https://img.shields.io/badge/Feishu%20%2F%20Lark-open%20platform-00d6b9)](https://open.feishu.cn/)
-[![Deps](https://img.shields.io/badge/dependencies-0-brightgreen)](#)
+[![No deps](https://img.shields.io/badge/pip%20install-nothing-brightgreen)](#)
 
 </div>
 
@@ -52,33 +52,29 @@
 
 ## 长什么样
 
-钉在飞书里的卡片大概是这样（示例，内容是编的）：
+钉在飞书里的卡片大概长这样（示例，内容是编的）：
 
-```text
-┌──────────────────────────────────────────────┐
-│ 会议总结 · 双十一备货复盘                      │
-├──────────────────────────────────────────────┤
-│ **双十一备货复盘**                             │
-│ 2026-11-05 14:00                             │
-│                                              │
-│ 一句话：定下了双十一主推的三个款和首批备货量。   │
-│                                              │
-│ 讨论内容：                                     │
-│ - 主推款从五个收窄到三个，集中预算               │
-│ - 仓库 11 月 8 日前必须到货，否则走空运          │
-│ - 客服话术要补上缺货时的替换方案                 │
-│                                              │
-│ 决定：主推 A/B/C 三款，首批各 500 件。          │
-│                                              │
-│ 待办：                                       │
-│ - 小王 11/6 前确认工厂交期                     │
-│ - 小李 11/7 前更新客服话术                      │
-│                                              │
-│ 时间安排：11/8 到货，11/10 开卖。               │
-├──────────────────────────────────────────────┤
-│ 会议自动总结                                   │
-└──────────────────────────────────────────────┘
-```
+> **会议总结 · 双十一备货复盘**
+>
+> **双十一备货复盘**
+> 2026-11-05 14:00
+>
+> **一句话**：定下了双十一主推的三个款和首批备货量。
+>
+> **讨论内容**
+> - 主推款从五个收窄到三个，集中预算
+> - 仓库 11 月 8 日前必须到货，否则走空运
+> - 客服话术要补上缺货时的替换方案
+>
+> **决定**：主推 A/B/C 三款，首批各 500 件。
+>
+> **待办**
+> - 小王 11/6 前确认工厂交期
+> - 小李 11/7 前更新客服话术
+>
+> **时间安排**：11/8 到货，11/10 开卖。
+
+卡片底部还有一行小字「会议自动总结」，右上角是蓝色标题栏。
 
 ## 三步跑起来
 
@@ -217,11 +213,11 @@ launchctl load ~/Library/LaunchAgents/com.me.meeting-minutes.plist
 帮我在这个目录跑一下 meeting_summary.py --lookback 1
 ```
 
-更多跑法（Windows、Docker、常驻）见 **[运行方式](docs/run-it.md)**。
+更多跑法（Windows、Docker、交给 AI 助手）见 **[运行方式](docs/run-it.md)**。
 
 ## 自定义
 
-- **改总结格式** → 复制一份提示词，改完用 `PROMPT_FILE` 指过去，代码不动
+- **改总结格式** → `--print-prompt` 导出提示词，改完用 `PROMPT_FILE` 指过去，代码不动
 - **加后处理** → 用 `--out-dir notes` 存本地 Markdown，再接你自己的脚本
 - **换输出渠道** → 卡片是 `send_card()` 一个函数，想发群里就换 `--chat-id`
 
@@ -264,8 +260,9 @@ launchctl load ~/Library/LaunchAgents/com.me.meeting-minutes.plist
 ```
 meeting_summary.py      主脚本，单文件，只用 Python 标准库
 docs/feishu-setup.md    飞书应用配置：建应用、开权限、发布、授权
-docs/run-it.md          怎么跑：本机 / 服务器 / 定时任务 / Docker
+docs/run-it.md          怎么跑：本机 / 服务器 / 定时任务 / Docker / Windows
 docs/customize.md       改提示词、换模型、加后处理
+docs/faq.md             踩过的坑和限制
 .env.example            配置模板
 ```
 

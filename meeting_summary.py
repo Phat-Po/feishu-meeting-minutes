@@ -8,6 +8,7 @@
   python3 meeting_summary.py --lookback 7    # 回看 7 天
   python3 meeting_summary.py --dry-run       # 只打印，不发卡片、不写记录
   python3 meeting_summary.py --out-dir notes # 另外存一份 Markdown 到本地
+  python3 meeting_summary.py --print-prompt  # 打印内置提示词，方便改成自己的
   python3 meeting_summary.py --self-test     # 自检
 
 环境变量见 .env.example。
@@ -255,8 +256,13 @@ def main() -> int:
     ap.add_argument("--lookback", type=int, default=2, help="回看几天（默认 2）")
     ap.add_argument("--dry-run", action="store_true", help="只打印，不推送、不写记录")
     ap.add_argument("--out-dir", default="", help="另外把总结存成 Markdown 到这个目录")
+    ap.add_argument("--print-prompt", action="store_true", help="打印内置提示词（方便改）")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
+
+    if args.print_prompt:
+        print(load_prompt(), end="")
+        return 0
 
     if args.self_test:
         return self_test()
