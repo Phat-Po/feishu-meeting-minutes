@@ -867,6 +867,7 @@ def main() -> int:
     ap.add_argument("--source", choices=["all", "vc", "minutes"], default="all")
     ap.add_argument("--dry-run", action="store_true", help="只打印，不建文档、不发卡片、不写记录")
     ap.add_argument("--only", default="", help="只处理指定的 ID，逗号分隔（跳过时长过滤）")
+    ap.add_argument("--force", action="store_true", help="重做已处理过的记录")
     ap.add_argument("--out-dir", default="", help="另外把纪要存成 Markdown 到本地")
     ap.add_argument("--print-prompt", action="store_true", help="打印内置提示词")
     ap.add_argument("--self-test", action="store_true")
@@ -913,8 +914,10 @@ def main() -> int:
         if only:
             have = {s["id"] for s in sources}
             for tok in only - have:
-                det = lark_json(profile, ["minutes", "+detail", "--as", "user",
-                                          "--minute-tokens", tok])
+                # 这里探错是正常的：ID 只属于某一个账号，别的账号当然读不到
+                rc, out = lark(profile, ["minutes", "+detail", "--as", "user",
+                                         "--minute-tokens", tok, "--json"])
+                det = parse_first_json(out)
                 if not det or not det.get("ok"):
                     continue
                 try:
@@ -933,7 +936,7 @@ def main() -> int:
             key = f"{profile or 'default'}:{src['source']}:{src['id']}"
             if only and src["id"] not in only:
                 continue
-            if key in seen or src["id"] in set(state.get("legacy_ids", [])):
+            if not args.force and (key in seen or src["id"] in set(state.get("legacy_ids", []))):
                 continue
             if not only and src.get("duration") and src["duration"] < env_int("MIN_DURATION", MIN_DURATION):
                 print(f"  跳过（只有 {src['duration']} 秒）: {src['title']}")
