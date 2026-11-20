@@ -283,6 +283,10 @@ python3 heartbeat.py                # 有问题就发飞书消息
 - **改总结格式** → `--print-prompt` 导出提示词，改完用 `PROMPT_FILE` 指过去
 - **加后处理** → 用 `--out-dir notes` 另外存一份本地 Markdown
 - **只处理一种来源** → `--source minutes` 或 `--source vc`
+- **只补做某几条** → `--only <ID>,<ID>`，跳过时长过滤和历史记录
+
+> 同一个目录只能同时跑一个实例。批量处理长录音时，进程会写一个锁文件，
+> 定时任务撞上来会直接跳过 —— 否则两边会为同一条录音各建一份文档。
 
 详细做法见 **[自定义指南](docs/customize.md)**。
 

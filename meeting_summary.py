@@ -13,6 +13,7 @@
   python3 meeting_summary.py --detail full        # 完整版纪要
   python3 meeting_summary.py --dry-run            # 只打印，不建文档、不发卡片、不写记录
   python3 meeting_summary.py --source minutes     # 只扫上传录音
+  python3 meeting_summary.py --only <ID>,<ID>     # 只做指定的几条（跳过时长过滤）
   python3 meeting_summary.py --print-prompt       # 打印内置提示词
   python3 meeting_summary.py --self-test          # 自检
 
@@ -21,6 +22,7 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import datetime
 import json
 import os
@@ -464,6 +466,44 @@ def clean_transcript(text: str, anchor_every: int = 300) -> str:
     return "\n".join(out)
 
 
+class Lock:
+    """同一时间只允许一个实例跑。
+
+    批量处理一条长录音要好几分钟，很容易和每 10 分钟的定时任务撞上。
+    撞上了两边都会处理同一条 —— 因为状态只在结束时才写盘 —— 于是生成重复文档。
+    """
+
+    def __init__(self) -> None:
+        self.path = state_path().with_suffix(".lock")
+        self.held = False
+
+    def __enter__(self) -> "Lock":
+        try:
+            age = datetime.datetime.now().timestamp() - self.path.stat().st_mtime
+            if age < 7200:                      # 两小时内算有效，超过就是残留
+                print("  另一个实例正在跑，本次跳过（避免重复生成文档）")
+                raise SystemExit(0)
+            self.path.unlink()
+        except FileNotFoundError:
+            pass
+        try:
+            fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            self.held = True
+        except FileExistsError:
+            print("  另一个实例正在跑，本次跳过")
+            raise SystemExit(0)
+        return self
+
+    def __exit__(self, *exc) -> None:
+        if self.held:
+            try:
+                self.path.unlink()
+            except FileNotFoundError:
+                pass
+
+
 def temp_workdir() -> str:
     """lark-cli 只允许往 cwd、/tmp、~/files 里写，TMPDIR 在 macOS 上会被拒。"""
     for base in ("/tmp", os.getcwd()):
@@ -740,6 +780,24 @@ def self_test() -> int:
     assert "# 逐字稿脉络" not in REDUCE_PROMPTS["standard"](3)
     assert "700 字" in REDUCE_PROMPTS["brief"](3)
     assert env("__NOT_SET_EVER__") == ""
+
+    # 锁：第二个实例必须立刻退出，不能两边同时处理同一条
+    import tempfile as _tf
+    d = _tf.mkdtemp()
+    os.environ["STATE_FILE"] = os.path.join(d, "state.json")
+    a = Lock(); a.__enter__()
+    assert a.path.exists()
+    try:
+        Lock().__enter__()
+        raise AssertionError("第二个实例应该被锁挡住")
+    except SystemExit:
+        pass
+    a.__exit__(None, None, None)
+    assert not a.path.exists()
+    os.environ.pop("STATE_FILE", None)
+    import shutil as _sh
+    _sh.rmtree(d, ignore_errors=True)
+
     print("self-test OK")
     return 0
 
@@ -752,6 +810,7 @@ def main() -> int:
     ap.add_argument("--detail", choices=["brief", "standard", "full"], default="standard")
     ap.add_argument("--source", choices=["all", "vc", "minutes"], default="all")
     ap.add_argument("--dry-run", action="store_true", help="只打印，不建文档、不发卡片、不写记录")
+    ap.add_argument("--only", default="", help="只处理指定的 ID，逗号分隔（跳过时长过滤）")
     ap.add_argument("--out-dir", default="", help="另外把纪要存成 Markdown 到本地")
     ap.add_argument("--print-prompt", action="store_true", help="打印当前档位的提示词")
     ap.add_argument("--self-test", action="store_true")
@@ -762,6 +821,15 @@ def main() -> int:
         return 0
     if args.self_test:
         return self_test()
+
+    only = {x.strip() for x in args.only.split(",") if x.strip()}
+    if only and args.dry_run:
+        print(f"  只处理 {len(only)} 条指定记录")
+
+    # 锁：批量跑和定时任务不能同时开工，否则同一条会生成两份文档
+    _lock = Lock()
+    _lock.__enter__()
+    atexit.register(_lock.__exit__, None, None, None)
 
     state = load_state()
     seen = set(state["processed"])
@@ -789,9 +857,11 @@ def main() -> int:
 
         for src in sources:
             key = f"{profile or 'default'}:{src['source']}:{src['id']}"
+            if only and src["id"] not in only:
+                continue
             if key in seen or src["id"] in set(state.get("legacy_ids", [])):
                 continue
-            if src.get("duration") and src["duration"] < env_int("MIN_DURATION", MIN_DURATION):
+            if not only and src.get("duration") and src["duration"] < env_int("MIN_DURATION", MIN_DURATION):
                 print(f"  跳过（只有 {src['duration']} 秒）: {src['title']}")
                 seen.add(key)
                 continue
