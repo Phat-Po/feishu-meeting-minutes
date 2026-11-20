@@ -209,6 +209,21 @@ lark-cli auth login               # 真的过期了就重新登录
 飞书要求**改完权限必须发布新版本**，老版本不会自动带上新权限。
 发布完还要管理员审核通过（如果企业开了审核）。
 
+### 报错信息和别人的不一样 / 行为突然变了
+
+先确认机器上没有装了两个版本：
+
+```bash
+which -a lark-cli
+```
+
+如果列出多个，排在前面那个会被用到。旧版本对文件输出路径的校验更严
+（比如 `--output-dir` 只接受当前目录下的相对路径），会报出
+「must be a relative path within the current directory」这类新版不会报的错。
+
+定时任务里因为启动脚本排了 PATH 顺序，可能没事；你在终端手动跑时却会踩到。
+要么统一升级，要么在脚本里用 `LARK_CLI=/绝对路径/lark-cli` 指定。
+
 ### 下载逐字稿时报「outside the built-in allowlist」
 
 `lark-cli` 只允许往三个地方写文件：**当前目录、`/tmp`、`~/files`**。
