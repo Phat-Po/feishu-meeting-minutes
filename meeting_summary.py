@@ -878,6 +878,25 @@ def main() -> int:
         if args.source in ("all", "minutes"):
             sources += scan_minutes(profile, args.lookback)
 
+        # --only 指定的 ID 不一定出现在搜索结果里（搜索索引本身不稳定）。
+        # 直接按 ID 查一次详情，查到就补进候选，查不到说明不属于这个账号。
+        if only:
+            have = {s["id"] for s in sources}
+            for tok in only - have:
+                det = lark_json(profile, ["minutes", "+detail", "--as", "user",
+                                          "--minute-tokens", tok])
+                if not det or not det.get("ok"):
+                    continue
+                try:
+                    mt = det["data"]["minutes"][0]
+                except Exception:  # noqa: BLE001
+                    continue
+                sources.append({
+                    "profile": profile, "source": "minutes", "id": tok,
+                    "title": mt.get("title") or "录音", "when": "",
+                    "ref": tok, "duration": 0,
+                })
+
         print(f"[{now()}] [{label}] 候选 {len(sources)} 条")
 
         for src in sources:
