@@ -58,7 +58,7 @@ SCHEMA = """{
 
 DIAGRAM_RULE = """diagram 字段的写法（Mermaid flowchart，必须用 subgraph 分组）：
 
-flowchart LR
+flowchart TB
   subgraph G1["议题名"]
     A1["结论一行<br/>补充说明"]
     A2["结论一行"]
@@ -71,7 +71,7 @@ flowchart LR
   style G2 fill:#EAFBF2,stroke:#10B981,color:#065F46
 
 硬性要求：
-- 第一行必须是 flowchart LR
+- 第一行必须是 flowchart TB（纵向排列，横向排版进文档会被缩得很小）
 - 2-5 个 subgraph，每个里面 2-4 个方框节点
 - 节点写法固定为 X["文字"]，文字里可以用 <br/> 换行，但不要出现英文双引号
 - 每个节点文字不超过 20 个字，第一行给结论，第二行给补充
@@ -610,7 +610,7 @@ def build_diagram(data: dict, root: str, fallback_topics: list[str]) -> str:
         return "\n".join(lines)
 
     topics = [label_text(t, 14) for t in fallback_topics if label_text(t, 14)][:4] or ["会议内容"]
-    out = ["flowchart LR"]
+    out = ["flowchart TB"]
     for i, t in enumerate(topics, 1):
         fill, stroke, _ = PALETTE[(i - 1) % len(PALETTE)]
         out.append(f'  subgraph G{i}["{t}"]')
