@@ -536,6 +536,7 @@ def scan_minutes(profile: str, days: int) -> list[dict]:
             "profile": profile, "source": "minutes", "id": str(token),
             "title": title or "录音", "when": when, "ref": token,
             "duration": parse_duration_seconds(desc),
+            "app_link": (it.get("meta_data") or {}).get("app_link", ""),
         })
     return out
 
@@ -618,6 +619,16 @@ def build_mindmap(data: dict, root: str, fallback_topics: list[str]) -> str:
     return f"mindmap\n  root(({root_label}))\n{body}"
 
 
+def time_to_ms(text: str) -> int | None:
+    """把 MM:SS 或 HH:MM:SS 转成毫秒；转不了返回 None。"""
+    m = re.fullmatch(r"\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*", str(text or ""))
+    if not m:
+        return None
+    a, b, c = m.group(1), m.group(2), m.group(3)
+    secs = int(a) * 3600 + int(b) * 60 + int(c) if c else int(a) * 60 + int(b)
+    return secs * 1000
+
+
 def render_doc(data: dict, meta: dict) -> tuple[str, str]:
     """把模型返回的结构渲染成飞书文档 XML。返回 (标题, XML)。"""
     title_core = str(data.get("title") or "").strip() or meta.get("title", "会议")
@@ -633,9 +644,15 @@ def render_doc(data: dict, meta: dict) -> tuple[str, str]:
     parts.append(f"<whiteboard type=\"mermaid\">\n{esc(mindmap)}\n</whiteboard>")
 
     one = str(data.get("one_line") or "").strip()
-    if one:
-        parts.append('<callout emoji="📌" background-color="light-blue">'
-                     f'<p><b>一句话</b>：{esc(one)}</p></callout>')
+    audio = str(meta.get("audio_url") or "").strip()
+    if one or audio:
+        inner = ""
+        if one:
+            inner += f"<p><b>一句话</b>：{esc(one)}</p>"
+        if audio:
+            inner += (f'<p>🎧 <a type="url-preview" href="{esc(audio)}">'
+                      "听原始录音（点章节时间可直接跳到那一刻）</a></p>")
+        parts.append(f'<callout emoji="📌" background-color="light-blue">{inner}</callout>')
 
     decisions = data.get("decisions") or []
     todos = data.get("todos") or []
@@ -698,7 +715,14 @@ def render_doc(data: dict, meta: dict) -> tuple[str, str]:
                      '<th background-color="light-gray"><p>讲了什么</p></th>'
                      "</tr></thead><tbody>")
         for c in chapters[:MAX_CHAPTERS]:
-            parts.append(f"<tr><td><p>{esc(c.get('time', ''))}</p></td>"
+            t_raw = esc(c.get("time", ""))
+            # 时间戳做成跳转链接：点一下直接跳到妙记里那一刻开始播
+            ms = time_to_ms(c.get("time", ""))
+            if audio and ms is not None:
+                t_cell = f'<a href="{esc(audio)}?t={ms}">{t_raw}</a>'
+            else:
+                t_cell = t_raw
+            parts.append(f"<tr><td><p>{t_cell}</p></td>"
                          f"<td><p><b>{esc(c.get('title', ''))}</b></p></td>"
                          f"<td><p>{esc(c.get('note', ''))}</p></td></tr>")
         parts.append("</tbody></table>")
@@ -807,6 +831,9 @@ def self_test() -> int:
     assert "[00:00:07]" in cleaned and "[00:06:00]" in cleaned
     assert "这段要保留" in cleaned
     assert hhmmss(3700) == "[01:01:40]"
+    assert time_to_ms("12:30") == 750000
+    assert time_to_ms("1:02:03") == 3723000
+    assert time_to_ms("不是时间") is None
 
     spk = "Speaker 1 00:00:00.590 \n关了吗？\nSpeaker 2 00:01:05.100 \n第二节。"
     c2 = clean_transcript(spk)
@@ -832,10 +859,14 @@ def self_test() -> int:
         "quotes": [{"text": "原话 & 引用", "why": "理由"}],
         "summary": [{"topic": "议题", "points": ["要点 <1>"]}],
         "chapters": [{"time": "00:01", "title": "开场", "note": "说明"}],
-    }, {"title": "录音", "when": "2026-01-01", "minutes": 30, "chars": 1000})
+    }, {"title": "录音", "when": "2026-01-01", "minutes": 30, "chars": 1000,
+        "audio_url": "https://x.feishu.cn/minutes/abc"})
     assert "<script>" not in xml and "&lt;script&gt;" in xml
     assert "<whiteboard" in xml and "<grid>" in xml and "checkbox" in xml
     assert "详细章节" in xml
+    # 顶部要有录音入口，章节时间要能跳到那一刻
+    assert "听原始录音" in xml and "https://x.feishu.cn/minutes/abc" in xml
+    assert "minutes/abc?t=1000" in xml  # 章节时间 00:01 → 1000ms
 
     assert env("__NOT_SET_EVER__") == ""
 
@@ -909,6 +940,15 @@ def main() -> int:
         if args.source in ("all", "minutes"):
             sources += scan_minutes(profile, args.lookback)
 
+        # 妙记的播放地址是 https://<租户域名>/minutes/<token>，域名各家不同，
+        # 从搜索结果里学一个，后面按 ID 补进来的记录就能拼出同样的地址。
+        domain = ""
+        for s in sources:
+            m = re.match(r"https?://([^/]+)/", s.get("app_link") or "")
+            if m:
+                domain = m.group(1)
+                break
+
         # --only 指定的 ID 不一定出现在搜索结果里（搜索索引本身不稳定）。
         # 直接按 ID 查一次详情，查到就补进候选，查不到说明不属于这个账号。
         if only:
@@ -928,6 +968,7 @@ def main() -> int:
                     "profile": profile, "source": "minutes", "id": tok,
                     "title": mt.get("title") or "录音", "when": "",
                     "ref": tok, "duration": 0,
+                    "app_link": f"https://{domain}/minutes/{tok}" if domain else "",
                 })
 
         print(f"[{now()}] [{label}] 候选 {len(sources)} 条")
@@ -965,6 +1006,7 @@ def main() -> int:
             doc_title, xml = render_doc(data, {
                 "title": src["title"], "when": src["when"],
                 "minutes": (src.get("duration") or 0) // 60, "chars": raw_len,
+                "audio_url": src.get("app_link") or "",
             })
 
             if args.dry_run:
