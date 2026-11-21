@@ -107,6 +107,7 @@ lark-cli config init          # 会让你填飞书应用的 App ID 和 App Secre
 
 ```bash
 lark-cli auth login --scope "vc:meeting.search:read vc:note:read docx:document:readonly docx:document:create minutes:minutes.basic:read minutes:minutes.search:read minutes:minutes.artifacts:read im:message:send_as_bot"
+# 机器人发消息失败时脚本会改用你自己的身份，那就把最后一条换成 im:message.send_as_user
 ```
 
 ### 3. 跑一次看看
@@ -128,7 +129,7 @@ python3 meeting_summary.py --lookback 2             # 确认没问题再真跑
 
 ```
 ┌──────────────────────────────┐
-│  分模块卡片（2 列网格）         │  ← 一眼看全貌
+│  分模块卡片（3 张一行）         │  ← 一眼看全貌
 ├──────────────────────────────┤
 │  📌 一句话                     │  ← 蓝色高亮块
 ├───────────────┬──────────────┤
@@ -147,7 +148,7 @@ python3 meeting_summary.py --lookback 2             # 确认没问题再真跑
 - **顺序是有讲究的**：先给全貌和结论，细节压在最后。回看时不用从头读到尾。
 - **标题自动生成**：不再是「会议纪要：新录音」这种文件名，而是从内容里提炼，比如
   「会议纪要：双十一备货方案与主推款敲定 2026-11-05」。
-- **篇幅约 2,000-3,000 字**，不是逐字稿的复述。
+- **篇幅约 3,000-5,000 字**，不是逐字稿的复述。
 
 想改结构或篇幅，`--print-prompt` 导出提示词自己调。
 
@@ -355,6 +356,7 @@ docs/feishu-setup.md      飞书应用配置：建应用、开权限、发布、
 docs/run-it.md            怎么跑：本机 / 服务器 / 定时任务 / Docker / Windows
 docs/customize.md         改提示词、换模型、加后处理
 docs/faq.md               踩过的坑和限制
+docs/known-issues.md      错题本：11 条真踩过的坑，带编号可搜
 CHANGELOG.md              更新记录
 .env.example              配置模板
 ```
