@@ -350,7 +350,7 @@ def ask_model(prompt: str) -> str | None:
     body = json.dumps({
         "model": model,
         # 部分推理模型会先输出 thinking 块；额度太小会被吃光，拿不到正文
-        "max_tokens": env_int("AI_MAX_TOKENS", 16000),
+        "max_tokens": env_int("AI_MAX_TOKENS", 32000),
         "messages": [{"role": "user", "content": prompt}],
     }).encode()
     req = urllib.request.Request(

@@ -347,6 +347,7 @@ python3 heartbeat.py                # 有问题就发飞书消息
 ## 项目结构
 
 ```
+AGENTS.md                 流水线说明书 —— 写给要让 AI 复现/改造的人
 meeting_summary.py        主脚本，单文件，只用 Python 标准库
 heartbeat.py              检查定时任务有没有在跑
 deploy/run.example.sh     服务器上定时任务的启动器模板
