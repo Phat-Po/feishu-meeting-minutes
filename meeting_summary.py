@@ -48,7 +48,8 @@ MAX_CHAPTERS = 16          # 详细章节最多留多少条，防止末尾拖太
 SCHEMA = """{
   "title": "这场会到底是什么，12-20 字，不要「会议」「讨论」这种空词",
   "one_line": "一句话说清这场会干了什么，40 字以内",
-  "modules": [{"name": "模块名，8 字以内", "items": [{"head": "结论，12 字以内", "sub": "补充说明，24 字以内"}]}],
+  "core_points": ["最关键的结论，三条，每条 30 字以内"],
+  "modules": [{"name": "模块名，8 字以内", "icon": "图标名", "group": "属于哪一段", "items": [{"head": "结论，12 字以内", "sub": "补充说明，24 字以内"}]}],
   "decisions": [{"what": "定了什么", "why": "为什么这么定"}],
   "todos": [{"what": "要做什么", "who": "谁（没提就写未指定）", "when": "什么时候"}],
   "quotes": [{"text": "值得记的原话", "why": "为什么值得记"}],
@@ -56,23 +57,30 @@ SCHEMA = """{
   "chapters": [{"time": "MM:SS 或 HH:MM:SS", "title": "章节名", "note": "一句话概括"}]
 }"""
 
-DIAGRAM_RULE = """modules 字段的写法：
+DIAGRAM_RULE = """字段写法：
 
-- 2-6 个模块，每个模块 2-4 条要点
-- 模块按会议实际讨论顺序排列，第一个是最先讲的
-- 模块名 8 字以内；要点标题（head）12 字以内；补充说明（sub）24 字以内
-- head 写结论，sub 写依据、细节或例子；没有补充就把 sub 留空
-- 不要写「其他」「杂项」这种凑数的模块
+core_points：整场会最关键的 2-3 条结论，直接给判断和数字，不要复述讨论过程。
+
+modules：2-8 个模块，每个模块
+- name：模块名，8 字以内
+- icon：从下面这个清单里挑一个最贴切的，只能写清单里的名字
+  topic-discussion target success warning dangerous information document table
+  bar-chart line-chart timer clock stopwatch calendar person business-user crowd
+  store factory bank link share search settings code terminal lightning bookmark
+  folder email video-call toolbox pipeline ud-tasks ud-flag
+- group：这个模块属于哪一段，同一段的模块写一样的名字。整场会最多分 2-3 段，
+  比如「讨论要点」「结论与后续」。只有一段时全部留空字符串
+- items：2-5 条要点，head 写结论（12 字以内），sub 写说明（24 字以内，没有就留空）
+
+要求：按会议实际顺序排列；不要写「其他」「杂项」这种凑数模块。
 
 示例：
+"core_points": ["主推三款各备 500 件", "11/8 前必须到货", "落选款转清库存"],
 "modules": [
-  {"name": "选品", "items": [
-    {"head": "主推三款", "sub": "集中预算，单款投入翻倍"},
-    {"head": "落选转清库存", "sub": "不再补货"}
-  ]},
-  {"name": "备货", "items": [
-    {"head": "首批各 500 件", "sub": "11/8 前必须到货"}
-  ]}
+  {"name": "选品", "icon": "target", "group": "讨论要点",
+   "items": [{"head": "主推三款", "sub": "集中预算"}, {"head": "落选转清库存", "sub": ""}]},
+  {"name": "备货", "icon": "timer", "group": "结论与后续",
+   "items": [{"head": "首批各 500 件", "sub": "11/8 前到货"}]}
 ]"""
 
 PROMPT = """你是会议记录员。下面是一场会议的逐字稿。
@@ -601,41 +609,98 @@ def label_text(s, limit: int = 20) -> str:
     return t[:limit]
 
 
-def build_board_dsl(mods: list[dict], width: int = 1120) -> dict | None:
-    """把模块列表排成 2 列网格的飞书白板 DSL。没有模块就返回 None。"""
-    cards = []
-    for i, m in enumerate((mods or [])[:6]):
-        fill, stroke, tc = PALETTE[i % len(PALETTE)]
-        kids = [{"type": "text", "width": "fill-container", "height": "fit-content",
-                 "text": label_text(m.get("name"), 16), "fontSize": 18, "textColor": tc}]
-        for it in (m.get("items") or [])[:4]:
-            sub = label_text(it.get("sub"), 40)
-            inner = [{"type": "text", "width": "fill-container", "height": "fit-content",
-                      "text": label_text(it.get("head"), 24), "fontSize": 14,
-                      "textColor": "#111827"}]
-            if sub:
-                inner.append({"type": "text", "width": "fill-container", "height": "fit-content",
-                              "text": sub, "fontSize": 12, "textColor": "#6B7280"})
-            kids.append({
-                "type": "frame", "width": "fill-container", "height": "fit-content",
-                "layout": "vertical", "gap": 4, "padding": [10, 12, 10, 12],
-                "fillColor": "#FFFFFF", "borderColor": stroke, "borderWidth": 1,
-                "borderRadius": 10, "children": inner,
-            })
-        cards.append({
-            "type": "frame", "width": "fill-container", "height": "fit-content",
-            "layout": "vertical", "gap": 12, "padding": 18,
-            "fillColor": fill, "borderColor": stroke, "borderWidth": 2,
-            "borderRadius": 16, "children": kids,
-        })
-    if not cards:
+CARD_PALETTE = [
+    ("#F1F0FF", "#C7C5F5", "#4F46E5"),
+    ("#EAF4FF", "#BFD9F7", "#1D4ED8"),
+    ("#F0FBF3", "#C3E8CF", "#047857"),
+    ("#FFF7EA", "#F3DDB3", "#B45309"),
+    ("#FDF2F6", "#F5C9D9", "#BE185D"),
+    ("#F3F4F6", "#D7D9DE", "#374151"),
+]
+
+ICON_SET = {
+    "topic-discussion", "target", "success", "warning", "dangerous", "information",
+    "document", "table", "bar-chart", "line-chart", "timer", "clock", "stopwatch",
+    "calendar", "person", "business-user", "crowd", "store", "factory", "bank",
+    "link", "share", "search", "settings", "code", "terminal", "lightning",
+    "bookmark", "folder", "email", "video-call", "toolbox", "pipeline",
+    "ud-tasks", "ud-flag",
+}
+
+
+def _txt(text: str, size: int, color: str, width: str = "fill-container") -> dict:
+    return {"type": "text", "width": width, "height": "fit-content",
+            "text": label_text(text, 60), "fontSize": size, "textColor": color}
+
+
+def _card(mod: dict, idx: int) -> dict:
+    fill, border, title_color = CARD_PALETTE[idx % len(CARD_PALETTE)]
+    icon = mod.get("icon") if mod.get("icon") in ICON_SET else "topic-discussion"
+    head = {"type": "frame", "width": "fill-container", "height": "fit-content",
+            "layout": "horizontal", "gap": 8, "padding": 0, "alignItems": "center",
+            "children": [
+                {"type": "icon", "name": icon, "width": 18, "height": 18},
+                _txt(mod.get("name", ""), 15, title_color),
+            ]}
+    kids = [head]
+    for it in (mod.get("items") or [])[:5]:
+        h = label_text(it.get("head"), 20)
+        sub = label_text(it.get("sub"), 30)
+        line = f"• {h}" + (f"：{sub}" if sub else "")
+        kids.append(_txt(line, 13, "#374151"))
+    return {"type": "frame", "width": "fill-container", "height": "fit-content",
+            "layout": "vertical", "gap": 10, "padding": [16, 16, 16, 16],
+            "fillColor": fill, "borderColor": border, "borderWidth": 1,
+            "borderRadius": 12, "children": kids}
+
+
+def build_board_dsl(data: dict, width: int = 1120) -> dict | None:
+    """把模块按「核心结论 + 分段卡片」排成飞书白板 DSL。没有模块就返回 None。"""
+    mods = [m for m in (data.get("modules") or []) if isinstance(m, dict)][:8]
+    if not mods:
         return None
-    rows = [{"type": "frame", "width": "fill-container", "height": "fit-content",
-             "layout": "horizontal", "gap": 20, "padding": 0, "alignItems": "stretch",
-             "children": cards[i:i + 2]} for i in range(0, len(cards), 2)]
+
+    nodes: list[dict] = []
+    title = label_text(data.get("title"), 40)
+    if title:
+        nodes.append(_txt(title, 24, "#111827"))
+
+    core = [label_text(p, 60) for p in (data.get("core_points") or []) if label_text(p, 60)]
+    if core:
+        kids = [{"type": "frame", "width": "fill-container", "height": "fit-content",
+                 "layout": "horizontal", "gap": 8, "padding": 0, "alignItems": "center",
+                 "children": [{"type": "icon", "name": "information", "width": 16, "height": 16},
+                              _txt("核心结论", 14, "#6B7280")]}]
+        kids += [_txt(f"• {c}", 13, "#374151") for c in core[:3]]
+        nodes.append({"type": "frame", "width": "fill-container", "height": "fit-content",
+                      "layout": "vertical", "gap": 8, "padding": [16, 18, 16, 18],
+                      "fillColor": "#F5F5F4", "borderRadius": 12, "children": kids})
+
+    order: list[str] = []
+    groups: dict[str, list[dict]] = {}
+    for m in mods:
+        g = label_text(m.get("group"), 12)
+        if g not in groups:
+            groups[g] = []
+            order.append(g)
+        groups[g].append(m)
+
+    idx = 0
+    for g in order:
+        if g:
+            nodes.append(_txt(g, 16, "#6B7280"))
+        cards = []
+        for m in groups[g]:
+            cards.append(_card(m, idx))
+            idx += 1
+        for i in range(0, len(cards), 3):
+            nodes.append({"type": "frame", "width": "fill-container", "height": "fit-content",
+                          "layout": "horizontal", "gap": 16, "padding": 0,
+                          "alignItems": "stretch", "children": cards[i:i + 3]})
+
     return {"version": 2, "nodes": [{
         "type": "frame", "width": width, "height": "fit-content",
-        "layout": "vertical", "gap": 20, "padding": 0, "children": rows}]}
+        "layout": "vertical", "gap": 20, "padding": 0, "children": nodes}]}
 
 
 def to_openapi(dsl: dict) -> dict | None:
@@ -918,17 +983,21 @@ def self_test() -> int:
     assert chunk_text("单个短块", 1000) == ["单个短块"]
 
     # 思维导图节点不能带括号引号，否则整张图渲染失败
-    mods = [{"name": "甲", "items": [{"head": "要点一", "sub": "说明"}]},
-            {"name": "乙", "items": [{"head": "要点二", "sub": ""}]},
-            {"name": "丙", "items": [{"head": "要点三", "sub": "说明"}]}]
-    dsl = build_board_dsl(mods)
-    root = dsl["nodes"][0]
-    assert root["layout"] == "vertical" and len(root["children"]) == 2   # 3 张卡排成两行
-    assert root["children"][0]["layout"] == "horizontal"
-    assert len(root["children"][0]["children"]) == 2
-    assert len(root["children"][1]["children"]) == 1
-    assert root["children"][0]["children"][0]["fillColor"] == PALETTE[0][0]
-    assert build_board_dsl([]) is None
+    mods = [{"name": "甲", "icon": "target", "group": "讨论", "items": [{"head": "要点一", "sub": "说明"}]},
+            {"name": "乙", "icon": "timer", "group": "讨论", "items": [{"head": "要点二", "sub": ""}]},
+            {"name": "丙", "icon": "瞎写的图标", "group": "后续", "items": [{"head": "要点三", "sub": "说明"}]}]
+    dsl = build_board_dsl({"title": "标题", "core_points": ["结论一", "结论二"], "modules": mods})
+    kids = dsl["nodes"][0]["children"]
+    assert kids[0]["text"] == "标题"
+    assert any(k.get("fillColor") == "#F5F5F4" for k in kids), "要有核心结论灰块"
+    rows = [k for k in kids if k.get("layout") == "horizontal"]
+    assert len(rows) == 2, "讨论段 2 张一行，后续段 1 张一行"
+    assert len(rows[0]["children"]) == 2 and len(rows[1]["children"]) == 1
+    first_card = rows[0]["children"][0]
+    assert first_card["children"][0]["children"][0]["name"] == "target"
+    bad_card = rows[1]["children"][0]
+    assert bad_card["children"][0]["children"][0]["name"] == "topic-discussion", "图标名不合法要兜底"
+    assert build_board_dsl({"modules": []}) is None
     fb = build_mermaid_fallback(mods)
     assert fb.startswith("flowchart") and fb.count("subgraph") == 3
     assert label_text('带"引号"的文字') == "带 引号 的文字"
@@ -1087,7 +1156,7 @@ def main() -> int:
 
             # 白板：优先用飞书原生画板（能控布局），转换失败就退回 Mermaid
             mods = data.get("modules") or []
-            dsl = build_board_dsl(mods)
+            dsl = build_board_dsl(data)
             openapi = to_openapi(dsl) if dsl else None
             if openapi:
                 board_xml = '<whiteboard type="blank"></whiteboard>'
