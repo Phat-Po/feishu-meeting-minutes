@@ -694,9 +694,15 @@ def build_board_dsl(data: dict, width: int = 1120) -> dict | None:
             cards.append(_card(m, idx))
             idx += 1
         for i in range(0, len(cards), 3):
+            row = cards[i:i + 3]
+            # 不足 3 张时补透明占位，否则最后一张会被拉满整行
+            row = row + [{"type": "frame", "width": "fill-container",
+                          "height": "fit-content", "layout": "vertical",
+                          "gap": 0, "padding": 0, "children": []}
+                         for _ in range(3 - len(row))]
             nodes.append({"type": "frame", "width": "fill-container", "height": "fit-content",
                           "layout": "horizontal", "gap": 16, "padding": 0,
-                          "alignItems": "stretch", "children": cards[i:i + 3]})
+                          "alignItems": "stretch", "children": row})
 
     return {"version": 2, "nodes": [{
         "type": "frame", "width": width, "height": "fit-content",
@@ -992,7 +998,7 @@ def self_test() -> int:
     assert any(k.get("fillColor") == "#F5F5F4" for k in kids), "要有核心结论灰块"
     rows = [k for k in kids if k.get("layout") == "horizontal"]
     assert len(rows) == 2, "讨论段 2 张一行，后续段 1 张一行"
-    assert len(rows[0]["children"]) == 2 and len(rows[1]["children"]) == 1
+    assert len(rows[0]["children"]) == 3 and len(rows[1]["children"]) == 3  # 不足补占位
     first_card = rows[0]["children"][0]
     assert first_card["children"][0]["children"][0]["name"] == "target"
     bad_card = rows[1]["children"][0]
