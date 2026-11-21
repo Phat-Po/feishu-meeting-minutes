@@ -48,7 +48,7 @@ MAX_CHAPTERS = 16          # 详细章节最多留多少条，防止末尾拖太
 SCHEMA = """{
   "title": "这场会到底是什么，12-20 字，不要「会议」「讨论」这种空词",
   "one_line": "一句话说清这场会干了什么，40 字以内",
-  "diagram": "mermaid flowchart 代码，见下方要求",
+  "modules": [{"name": "模块名，8 字以内", "items": [{"head": "结论，12 字以内", "sub": "补充说明，24 字以内"}]}],
   "decisions": [{"what": "定了什么", "why": "为什么这么定"}],
   "todos": [{"what": "要做什么", "who": "谁（没提就写未指定）", "when": "什么时候"}],
   "quotes": [{"text": "值得记的原话", "why": "为什么值得记"}],
@@ -56,29 +56,24 @@ SCHEMA = """{
   "chapters": [{"time": "MM:SS 或 HH:MM:SS", "title": "章节名", "note": "一句话概括"}]
 }"""
 
-DIAGRAM_RULE = """diagram 字段的写法（Mermaid flowchart，必须用 subgraph 分组）：
+DIAGRAM_RULE = """modules 字段的写法：
 
-flowchart TB
-  subgraph G1["议题名"]
-    A1["结论一行<br/>补充说明"]
-    A2["结论一行"]
-  end
-  subgraph G2["议题名"]
-    B1["结论一行<br/>补充说明"]
-  end
-  G1 --> G2
-  style G1 fill:#EAF4FF,stroke:#3B82F6,color:#1E3A5F
-  style G2 fill:#EAFBF2,stroke:#10B981,color:#065F46
+- 2-6 个模块，每个模块 2-4 条要点
+- 模块按会议实际讨论顺序排列，第一个是最先讲的
+- 模块名 8 字以内；要点标题（head）12 字以内；补充说明（sub）24 字以内
+- head 写结论，sub 写依据、细节或例子；没有补充就把 sub 留空
+- 不要写「其他」「杂项」这种凑数的模块
 
-硬性要求：
-- 第一行必须是 flowchart TB（纵向排列，横向排版进文档会被缩得很小）
-- 2-4 个 subgraph，每个里面 2-4 个方框节点
-- 节点写法固定为 X["文字"]，文字里可以用 <br/> 换行，但不要出现英文双引号
-- 每个节点文字不超过 20 个字，第一行给结论，第二行给补充
-- 每个 subgraph 必须配一行 style，颜色从这四组里挑，同一张图内不要重复太多：
-  蓝 #EAF4FF / #3B82F6 | 绿 #EAFBF2 / #10B981 | 橙 #FFF7EA / #F59E0B | 灰 #F3F4F6 / #9CA3AF
-- 所有 subgraph 必须用 --> 串起来，不能有孤立悬空的分组
-- 节点文字每行不超过 10 个字，最多两行"""
+示例：
+"modules": [
+  {"name": "选品", "items": [
+    {"head": "主推三款", "sub": "集中预算，单款投入翻倍"},
+    {"head": "落选转清库存", "sub": "不再补货"}
+  ]},
+  {"name": "备货", "items": [
+    {"head": "首批各 500 件", "sub": "11/8 前必须到货"}
+  ]}
+]"""
 
 PROMPT = """你是会议记录员。下面是一场会议的逐字稿。
 
@@ -162,9 +157,11 @@ def state_path() -> Path:
     return Path(env("STATE_FILE") or Path(__file__).resolve().parent / "state.json")
 
 
-def run(cmd: list[str], timeout: int = 300, stdin: str | None = None) -> tuple[int, str]:
+def run(cmd: list[str], timeout: int = 300, stdin: str | None = None,
+        cwd: str | None = None) -> tuple[int, str]:
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, input=stdin)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                           input=stdin, cwd=cwd)
         return p.returncode, ((p.stdout or "") + (p.stderr or "")).strip()
     except Exception as e:  # noqa: BLE001
         return 1, str(e)
@@ -603,22 +600,72 @@ def label_text(s, limit: int = 20) -> str:
     return t[:limit]
 
 
-def build_diagram(data: dict, root: str, fallback_topics: list[str]) -> str:
-    """模型给的 Mermaid flowchart 直接用；不合格就按议题名拼一个兜底的分组图。"""
-    raw = str(data.get("diagram") or "").strip()
-    lines = [l.rstrip() for l in raw.split("\n") if l.strip() and not l.strip().startswith("```")]
-    if lines and re.match(r"^(flowchart|graph)\b", lines[0].strip()) and "subgraph" in raw:
-        return "\n".join(lines)
+def build_board_dsl(mods: list[dict], width: int = 1120) -> dict | None:
+    """把模块列表排成 2 列网格的飞书白板 DSL。没有模块就返回 None。"""
+    cards = []
+    for i, m in enumerate((mods or [])[:6]):
+        fill, stroke, tc = PALETTE[i % len(PALETTE)]
+        kids = [{"type": "text", "width": "fill-container", "height": "fit-content",
+                 "text": label_text(m.get("name"), 16), "fontSize": 18, "textColor": tc}]
+        for it in (m.get("items") or [])[:4]:
+            sub = label_text(it.get("sub"), 40)
+            inner = [{"type": "text", "width": "fill-container", "height": "fit-content",
+                      "text": label_text(it.get("head"), 24), "fontSize": 14,
+                      "textColor": "#111827"}]
+            if sub:
+                inner.append({"type": "text", "width": "fill-container", "height": "fit-content",
+                              "text": sub, "fontSize": 12, "textColor": "#6B7280"})
+            kids.append({
+                "type": "frame", "width": "fill-container", "height": "fit-content",
+                "layout": "vertical", "gap": 4, "padding": [10, 12, 10, 12],
+                "fillColor": "#FFFFFF", "borderColor": stroke, "borderWidth": 1,
+                "borderRadius": 10, "children": inner,
+            })
+        cards.append({
+            "type": "frame", "width": "fill-container", "height": "fit-content",
+            "layout": "vertical", "gap": 12, "padding": 18,
+            "fillColor": fill, "borderColor": stroke, "borderWidth": 2,
+            "borderRadius": 16, "children": kids,
+        })
+    if not cards:
+        return None
+    rows = [{"type": "frame", "width": "fill-container", "height": "fit-content",
+             "layout": "horizontal", "gap": 20, "padding": 0, "alignItems": "stretch",
+             "children": cards[i:i + 2]} for i in range(0, len(cards), 2)]
+    return {"version": 2, "nodes": [{
+        "type": "frame", "width": width, "height": "fit-content",
+        "layout": "vertical", "gap": 20, "padding": 0, "children": rows}]}
 
-    topics = [label_text(t, 14) for t in fallback_topics if label_text(t, 14)][:4] or ["会议内容"]
+
+def to_openapi(dsl: dict) -> dict | None:
+    """用官方 whiteboard-cli 把 DSL 转成飞书白板接口认的格式。转换失败返回 None。"""
+    tmp = temp_workdir()
+    try:
+        Path(tmp, "d.json").write_text(json.dumps(dsl, ensure_ascii=False), encoding="utf-8")
+        rc, out = run(["npx", "-y", "@larksuite/whiteboard-cli@0.2.13",
+                       "-i", "d.json", "--to", "openapi", "--format", "json"],
+                      timeout=180, cwd=tmp)
+        if rc != 0:
+            print(f"  [白板转换失败] {out[:200]}", file=sys.stderr)
+            return None
+        d = parse_first_json(out)
+        return d if isinstance(d, dict) and d.get("data") else None
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def build_mermaid_fallback(mods: list[dict]) -> str:
+    """白板写不进去时的退路：用模块名拼一张简单的分组图。"""
+    names = [label_text(m.get("name"), 14) for m in (mods or []) if label_text(m.get("name"), 14)]
+    names = names[:4] or ["会议内容"]
     out = ["flowchart TB"]
-    for i, t in enumerate(topics, 1):
+    for i, t in enumerate(names, 1):
         fill, stroke, _ = PALETTE[(i - 1) % len(PALETTE)]
         out.append(f'  subgraph G{i}["{t}"]')
         out.append(f'    G{i}A["{t}"]')
         out.append("  end")
         out.append(f"  style G{i} fill:{fill},stroke:{stroke}")
-    for i in range(1, len(topics)):
+    for i in range(1, len(names)):
         out.append(f"  G{i} --> G{i + 1}")
     return "\n".join(out)
 
@@ -633,7 +680,7 @@ def time_to_ms(text: str) -> int | None:
     return secs * 1000
 
 
-def render_doc(data: dict, meta: dict) -> tuple[str, str]:
+def render_doc(data: dict, meta: dict, board_xml: str = "") -> tuple[str, str]:
     """把模型返回的结构渲染成飞书文档 XML。返回 (标题, XML)。"""
     title_core = str(data.get("title") or "").strip() or meta.get("title", "会议")
     title_core = re.sub(r"\s+", " ", title_core)[:40]
@@ -642,10 +689,8 @@ def render_doc(data: dict, meta: dict) -> tuple[str, str]:
 
     parts: list[str] = [f"<title>{esc(doc_title)}</title>"]
 
-    diagram = build_diagram(data, title_core,
-                            [s.get("topic", "") for s in (data.get("summary") or [])])
-    # 画板内容也嵌在 XML 里，尖括号和 & 必须转义，否则整篇文档解析失败
-    parts.append(f"<whiteboard type=\"mermaid\">\n{esc(diagram)}\n</whiteboard>")
+    if board_xml:
+        parts.append(board_xml)
 
     one = str(data.get("one_line") or "").strip()
     audio = str(meta.get("audio_url") or "").strip()
@@ -743,8 +788,8 @@ def render_doc(data: dict, meta: dict) -> tuple[str, str]:
     return doc_title, "\n".join(parts)
 
 
-def create_doc(profile: str, title: str, xml: str) -> str:
-    """在录音所属账号的云盘根目录新建文档，返回链接。"""
+def create_doc(profile: str, title: str, xml: str) -> tuple[str, str]:
+    """在录音所属账号的云盘根目录新建文档，返回 (链接, 画板块 token)。"""
     cmd = [lark_cli_path()] + (["--profile", profile] if profile else []) + [
         "docs", "+create", "--as", "user", "--title", title,
         "--content", "-", "--doc-format", "xml",
@@ -757,7 +802,30 @@ def create_doc(profile: str, title: str, xml: str) -> str:
         return ""
     for w in d.get("data", {}).get("warnings", []) or []:
         print(f"  [文档警告] {w}", file=sys.stderr)
-    return (d.get("data", {}).get("document", {}) or {}).get("url", "")
+    doc = d.get("data", {}).get("document", {}) or {}
+    board = ""
+    for b in doc.get("new_blocks", []) or []:
+        if b.get("block_type") == "whiteboard" and b.get("block_token"):
+            board = b["block_token"]
+            break
+    return doc.get("url", ""), board
+
+
+def write_board(profile: str, board_token: str, openapi: dict) -> bool:
+    """把排好版的白板内容写进文档里的画板块。"""
+    tmp = temp_workdir()
+    try:
+        Path(tmp, "b.json").write_text(json.dumps(openapi, ensure_ascii=False), encoding="utf-8")
+        rc, out = lark(profile, ["whiteboard", "+update", "--as", "user",
+                                 "--whiteboard-token", board_token,
+                                 "--source", "@b.json", "--input_format", "raw", "--json"],
+                       timeout=180)
+        ok = rc == 0 and '"ok": true' in out
+        if not ok:
+            print(f"  [白板写入失败] {out[:200]}", file=sys.stderr)
+        return ok
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def own_open_id(profile: str) -> str:
@@ -848,10 +916,19 @@ def self_test() -> int:
     assert chunk_text("单个短块", 1000) == ["单个短块"]
 
     # 思维导图节点不能带括号引号，否则整张图渲染失败
-    good = "flowchart LR\n  subgraph G1[\"甲\"]\n    A1[\"要点\"]\n  end"
-    assert build_diagram({"diagram": good}, "主题", []) == good
-    fb = build_diagram({}, "主题", ["甲", "乙"])
-    assert fb.startswith("flowchart") and fb.count("subgraph") == 2 and "style G1" in fb
+    mods = [{"name": "甲", "items": [{"head": "要点一", "sub": "说明"}]},
+            {"name": "乙", "items": [{"head": "要点二", "sub": ""}]},
+            {"name": "丙", "items": [{"head": "要点三", "sub": "说明"}]}]
+    dsl = build_board_dsl(mods)
+    root = dsl["nodes"][0]
+    assert root["layout"] == "vertical" and len(root["children"]) == 2   # 3 张卡排成两行
+    assert root["children"][0]["layout"] == "horizontal"
+    assert len(root["children"][0]["children"]) == 2
+    assert len(root["children"][1]["children"]) == 1
+    assert root["children"][0]["children"][0]["fillColor"] == PALETTE[0][0]
+    assert build_board_dsl([]) is None
+    fb = build_mermaid_fallback(mods)
+    assert fb.startswith("flowchart") and fb.count("subgraph") == 3
     assert label_text('带"引号"的文字') == "带 引号 的文字"
 
     # 渲染出的 XML 必须转义干净
@@ -862,7 +939,8 @@ def self_test() -> int:
         "summary": [{"topic": "议题", "points": ["要点 <1>"]}],
         "chapters": [{"time": "00:01", "title": "开场", "note": "说明"}],
     }, {"title": "录音", "when": "2026-01-01", "minutes": 30, "chars": 1000,
-        "audio_url": "https://x.feishu.cn/minutes/abc"})
+        "audio_url": "https://x.feishu.cn/minutes/abc"},
+       '<whiteboard type="blank"></whiteboard>')
     assert "<script>" not in xml and "&lt;script&gt;" in xml
     assert "<whiteboard" in xml and "<grid>" in xml and "checkbox" in xml
     assert "详细章节" in xml
@@ -1005,24 +1083,39 @@ def main() -> int:
                 failed += 1
                 continue
 
+            # 白板：优先用飞书原生画板（能控布局），转换失败就退回 Mermaid
+            mods = data.get("modules") or []
+            dsl = build_board_dsl(mods)
+            openapi = to_openapi(dsl) if dsl else None
+            if openapi:
+                board_xml = '<whiteboard type="blank"></whiteboard>'
+                board_mode = "原生白板"
+            else:
+                board_xml = (f'<whiteboard type="mermaid">\n'
+                             f'{esc(build_mermaid_fallback(mods))}\n</whiteboard>')
+                board_mode = "Mermaid 兜底"
+
             doc_title, xml = render_doc(data, {
                 "title": src["title"], "when": src["when"],
                 "minutes": (src.get("duration") or 0) // 60, "chars": raw_len,
                 "audio_url": src.get("app_link") or "",
-            })
+            }, board_xml)
 
             if args.dry_run:
                 print("-" * 60)
                 print(f"标题：{doc_title}")
                 print(card_digest(data)[:600])
-                print(f"（文档 XML {len(xml)} 字节，含 {xml.count('<li>')} 条列表、"
+                print(f"（{board_mode}，文档 XML {len(xml)} 字节，含 {xml.count('<li>')} 条列表、"
                       f"{xml.count('<checkbox')} 条待办、{xml.count('<row')} 行章节）")
             else:
-                doc_url = create_doc(profile, doc_title, xml)
+                doc_url, board_tok = create_doc(profile, doc_title, xml)
                 if not doc_url:
                     failed += 1
                     continue
-                print(f"  文档: {doc_url}")
+                if openapi and board_tok:
+                    if not write_board(profile, board_tok, openapi):
+                        print("  白板没写进去，文档已建但画板是空的", file=sys.stderr)
+                print(f"  文档: {doc_url}（{board_mode}）")
                 send_card(profile, doc_title, card_digest(data), doc_url)
 
             if args.out_dir:
