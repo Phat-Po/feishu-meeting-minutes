@@ -53,7 +53,7 @@ SCHEMA = """{
   "decisions": [{"what": "定了什么", "why": "为什么这么定"}],
   "todos": [{"what": "要做什么", "who": "谁（没提就写未指定）", "when": "什么时候"}],
   "quotes": [{"text": "值得记的原话", "why": "为什么值得记"}],
-  "summary": [{"topic": "议题名", "points": ["要点", "要点"]}],
+  "summary": [{"topic": "议题名", "digest": "这个议题的概括，2-3 句连贯的话、60-120 字", "points": ["细节", "细节"]}],
   "chapters": [{"time": "MM:SS 或 HH:MM:SS", "title": "章节名", "note": "一句话概括"}]
 }"""
 
@@ -96,7 +96,9 @@ PROMPT = """你是会议记录员。下面是一场会议的逐字稿。
 - decisions 只收真正拍板的事；没有就给空数组，不要硬凑。
 - todos 里没明确说谁负责的，who 写「未指定」。
 - quotes 挑 2-4 句最有信息量的原话。
-- summary 收 5-8 个议题，每个议题 1-3 条要点，每条一句话。
+- summary 收 5-8 个议题。每个议题必须写 digest：2-3 句连贯的话、60-120 字，
+  说清这个议题讨论了什么、最后结论是什么；写成段落，不要用列表、不要逗号堆砌。
+  points 只放 digest 里没展开的细节，1-3 条即可。
 - chapters 按时间顺序，最多 """ + str(MAX_CHAPTERS) + """ 条，每条一句话。
 - 全文（不含 diagram）控制在 2000-3000 字，别写成流水账。
 - 人名、机构名、专有名词照原样写，不要翻译。
@@ -823,6 +825,9 @@ def render_doc(data: dict, meta: dict, board_xml: str = "") -> tuple[str, str]:
             topic = esc(s.get("topic", ""))
             if topic:
                 parts.append(f"<h2>{topic}</h2>")
+            digest = esc(s.get("digest", ""))
+            if digest:
+                parts.append(f"<p>{digest}</p>")
             points = [esc(p) for p in (s.get("points") or []) if esc(p)]
             if points:
                 parts.append("<ul>" + "".join(f"<li>{p}</li>" for p in points[:4]) + "</ul>")
