@@ -167,11 +167,12 @@ def run(cmd: list[str], timeout: int = 300, stdin: str | None = None,
         return 1, str(e)
 
 
-def lark(profile: str, args: list[str], timeout: int = 300) -> tuple[int, str]:
+def lark(profile: str, args: list[str], timeout: int = 300,
+         cwd: str | None = None) -> tuple[int, str]:
     cmd = [lark_cli_path()]
     if profile:
         cmd += ["--profile", profile]
-    return run(cmd + args, timeout=timeout)
+    return run(cmd + args, timeout=timeout, cwd=cwd)
 
 
 def parse_first_json(text: str):
@@ -816,10 +817,11 @@ def write_board(profile: str, board_token: str, openapi: dict) -> bool:
     tmp = temp_workdir()
     try:
         Path(tmp, "b.json").write_text(json.dumps(openapi, ensure_ascii=False), encoding="utf-8")
+        # @file 是相对 CLI 工作目录解析的，必须让它在临时目录里执行
         rc, out = lark(profile, ["whiteboard", "+update", "--as", "user",
                                  "--whiteboard-token", board_token,
                                  "--source", "@b.json", "--input_format", "raw", "--json"],
-                       timeout=180)
+                       timeout=180, cwd=tmp)
         ok = rc == 0 and '"ok": true' in out
         if not ok:
             print(f"  [白板写入失败] {out[:200]}", file=sys.stderr)
